@@ -73,7 +73,7 @@ conflicted::conflict_prefer("filter", "dplyr")
 conflicted::conflict_prefer("complete", "dplyr")
 rm(pkgList)
 
-source("C:/Users/kotaro/Desktop/R/common/myfuns.R")
+# source("C:/Users/kotaro/Desktop/R/common/myfuns.R")
 ```
 
 -   This chunk sets **the seed**.
