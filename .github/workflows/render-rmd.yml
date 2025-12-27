@@ -21,18 +21,21 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev zlib1g-dev libfontconfig1-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev libharfbuzz-dev libfribidi-dev
 
       - name: Install R packages
         run: |
-          install.packages(c("rmarkdown", "knitr", "tidyverse", "matrixcalc", "vars", "zoo", "modelsummary", "quantmod", "easypackages", "conflicted", "bvartools", "MASS"))
+          options(repos = c(CRAN = "https://cloud.r-project.org"))
+          install.packages("remotes")
+          install.packages(c("rmarkdown", "knitr", "tidyverse", "matrixcalc", "vars", "zoo", "modelsummary", "quantmod"))
         shell: Rscript {0}
 
       - name: Render R Markdown files
         run: |
-          # フォルダが存在する場合のみレンダリングする設定
-          Rscript -e 'rmarkdown::render("index.Rmd", output_format = "html_document")'
-          Rscript -e 'if(dir.exists("bayesian-var")) rmarkdown::render("bayesian-var/index.Rmd", output_format = "html_document")'
+          # ルートの index.Rmd をレンダリング
+          Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
+          # bayesian-var フォルダの中の index.Rmd をレンダリング
+          Rscript -e 'if(file.exists("bayesian-var/index.Rmd")) rmarkdown::render("bayesian-var/index.Rmd", output_file = "index.html")'
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
