@@ -58,20 +58,27 @@ knitr::opts_hooks$set(label = function(options) {
 -   This chunk **loads the required packages** and **my functions**.
 
 ```{r SET libraries, class.source='fold-hide'}
-pkgList <- c(
-  "tidyverse", #must-have
-  "matrixcalc", # for vec
-  "vars", # for VAR
-  "zoo", # table for VAR
-  "modelsummary", # summary functions and reg. tables
-  "quantmod" # FRED
-)
-easypackages::libraries(pkgList)
-conflicted::conflict_prefer("lag", "dplyr")
-conflicted::conflict_prefer("select", "dplyr")
-conflicted::conflict_prefer("filter", "dplyr")
-conflicted::conflict_prefer("complete", "dplyr")
-rm(pkgList)
+# pkgList <- c(
+#   "tidyverse", #must-have
+#   "matrixcalc", # for vec
+#   "vars", # for VAR
+#   "zoo", # table for VAR
+#   "modelsummary", # summary functions and reg. tables
+#   "quantmod" # FRED
+# )
+library(tidyverse)
+library(matrixcalc)
+library(vars)
+library(zoo)
+library(modelsummary)
+library(quantmod)
+library(bvartools)
+# easypackages::libraries(pkgList)
+# conflicted::conflict_prefer("lag", "dplyr")
+# conflicted::conflict_prefer("select", "dplyr")
+# conflicted::conflict_prefer("filter", "dplyr")
+# conflicted::conflict_prefer("complete", "dplyr")
+# rm(pkgList)
 
 # source("C:/Users/kotaro/Desktop/R/common/myfuns.R")
 ```
