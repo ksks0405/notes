@@ -1,4 +1,4 @@
-name: Render and Deploy (R + Python)
+name: Render and Deploy (High Speed R + Python)
 on:
   push:
     branches: [main]
@@ -12,16 +12,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- R のセットアップ ---
+      # --- R のセットアップ (高速バイナリ利用) ---
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
-          use-public-rspm: true
+          use-public-rspm: true 
 
       - name: Install Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      - name: Install R dependencies
+      # 自動キャッシュ & 高速インストール
+      - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
@@ -38,7 +39,7 @@ jobs:
             bvartools
             MASS
 
-      # --- Python のセットアップ（ipynb変換用） ---
+      # --- Python のセットアップ (ipynb 変換用) ---
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -49,19 +50,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install nbconvert
 
-      # --- レンダリング実行 ---
+      # --- レンダリング実行 (すべて index.html という名前で出力) ---
       - name: Render All Files
         run: |
-          # R Markdown の変換
+          # 1. ルートの index.Rmd -> index.html
           Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
-          Rscript -e 'if(dir.exists("bayesian-var")) rmarkdown::render("bayesian-var/index.Rmd", output_file = "index.html")'
           
-          # Jupyter Notebook の変換 (.ipynb -> index.html)
+          # 2. bayesian-var フォルダ内の index.Rmd -> index.html
+          if [ -d "bayesian-var" ]; then
+            Rscript -e 'rmarkdown::render("bayesian-var/index.Rmd", output_file = "index.html")'
+          fi
+          
+          # 3. bem-chap10 フォルダ内の index.ipynb -> index.html
           if [ -d "bem-chap10" ]; then
             jupyter nbconvert --to html bem-chap10/index.ipynb --output index.html
           fi
 
-      # --- デプロイ ---
+      # --- GitHub Pages 用ブランチ (gh-pages) へデプロイ ---
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
