@@ -1,4 +1,4 @@
-name: Render and Deploy (Full Support)
+name: Render and Deploy (Final Fix)
 on:
   push:
     branches: [main]
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- R セットアップ (高速バイナリ) ---
+      # --- R セットアップ ---
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -21,7 +21,7 @@ jobs:
       - name: Install Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # 自動キャッシュ & 依存パッケージインストール
+      # 高速インストール
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -50,28 +50,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install nbconvert
 
-      # --- レンダリング実行 (各フォルダに index.html を生成) ---
+      # --- レンダリング実行 (出力を絶対パスで固定) ---
       - name: Render All Files
         run: |
           # 1. ルート直下の index.Rmd
           Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
           
-          # 2. bayesian-var 内の index.Rmd
+          # 2. bayesian-var 内の index.Rmd (絶対パス指定)
           if [ -f "bayesian-var/index.Rmd" ]; then
-            cd bayesian-var
-            Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
-            cd ..
+            Rscript -e 'rmarkdown::render("bayesian-var/index.Rmd", output_file = paste0(getwd(), "/bayesian-var/index.html"))'
           fi
           
           # 3. bem-chap10 内の index.ipynb
           if [ -f "bem-chap10/index.ipynb" ]; then
-            jupyter nbconvert --to html bem-chap10/index.ipynb --output-dir=./bem-chap10 --output index.html
+            jupyter nbconvert --to html bem-chap10/index.ipynb --output index.html
           fi
 
-      # --- GitHub Pages 用ブランチ (gh-pages) へデプロイ ---
+      # --- デプロイ (生成されたファイルを確実に含める) ---
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./
           publish_branch: gh-pages
+          force_orphan: true # 履歴をクリーンにして確実に最新を公開
