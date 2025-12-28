@@ -1,6 +1,5 @@
 ---
 title: "Bayesian VARs"
-author: "Kotaro Suita"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -60,14 +59,12 @@ knitr::opts_hooks$set(label = function(options) {
 ```{r SET libraries, class.source='fold-hide'}
 # pkgList <- c(
 #   "tidyverse", #must-have
-#   "matrixcalc", # for vec
 #   "vars", # for VAR
 #   "zoo", # table for VAR
 #   "modelsummary", # summary functions and reg. tables
 #   "quantmod" # FRED
 # )
 library(tidyverse)
-library(matrixcalc)
 library(vars)
 library(zoo)
 library(modelsummary)
@@ -88,50 +85,44 @@ library(quantmod)
 set.seed(1111)
 ```
 
-# Data
+# データ
 
 ## Import and Pre-process
 
-The data has 158 rows of observations and 25 columns. The variables are transformed as 2 labels (`#`, `Country`), 1 factor (`Club`) and 22 continuous variables.
+FREDからDL
 
 ```{r IMP dataset}
-# 1) FREDから取得 → 四半期整合 → tibble化
 getSymbols(c("GDPC1", "GDPDEF", "FEDFUNDS"), src = "FRED")
-
-# RGDP, Deflator（四半期）: yearqtr index
+# GDP, def -> quarterly
 rgdp_q <- zoo(as.numeric(GDPC1), as.yearqtr(index(GDPC1)))
 def_q  <- zoo(as.numeric(GDPDEF), as.yearqtr(index(GDPDEF)))
 
-# FF（月次）→ 四半期平均: yearqtr index
+# FF -> monthly avg
 ff_m <- zoo(as.numeric(FEDFUNDS), as.yearmon(index(FEDFUNDS)))
 ff_q <- aggregate(ff_m, as.yearqtr, mean)
 
-# yearqtrで結合
+# merge
 z_q <- na.omit(merge(rgdp_q, def_q, ff_q))
 colnames(z_q) <- c("RGDP", "DEF", "FF")
 
-if (NROW(z_q) == 0) stop("Merged dataset is empty. Check series availability / overlap.")
-
-# tibble: date は四半期末日（推計時に扱いやすい）
+# tibble
 df_var <- tibble(
   date  = as.Date(as.yearqtr(index(z_q)), frac = 1),  # quarter end date
   lRGDP = 4*log(as.numeric(z_q[, "RGDP"])),
   lDEF  = 4*log(as.numeric(z_q[, "DEF"])),
   FF    = as.numeric(z_q[, "FF"])
 )
+```
 
-print(dplyr::glimpse(df_var))
-print(head(df_var))
+dfをtsに変換する関数
 
-# 2) 推計直前にだけ ts へ変換する関数
+```{r FUN df to ts, class.source='fold-hide'}
 to_ts_quarterly <- function(df, cols = c("lRGDP", "lDEF", "FF")) {
   stopifnot(all(c("date", cols) %in% names(df)))
   df <- df %>% arrange(date)
 
-  # date -> yearqtr
   q <- as.yearqtr(df$date)
 
-  # 開始四半期
   y0 <- as.integer(floor(as.numeric(q[1])))
   qtr0 <- as.integer(round((as.numeric(q[1]) - y0) * 4 + 1))
 
@@ -141,30 +132,35 @@ to_ts_quarterly <- function(df, cols = c("lRGDP", "lDEF", "FF")) {
 }
 ```
 
-```{r}
+```{r EXP dataset}
 df_var
 ```
 
-# Estimation
+# 推計
 
 ## OLS
 
-```{r}
-p <- 12
+`vars::VAR`を利用
 
+```{r REG setting}
+p <- 5
 ts_var <- to_ts_quarterly(df_var)
+```
+
+```{r REG var}
 var_est <- VAR(ts_var, p = p, type = "const")
+```
+
+Quick check of result;
+
+```{r EXP ols result}
 coef_order <- c(
   unlist(lapply(1:p, function(l) paste0("lRGDP.l", l))),
   unlist(lapply(1:p, function(l) paste0("lDEF.l",  l))),
   unlist(lapply(1:p, function(l) paste0("FF.l",    l))),
   "const"
 )
-```
 
-Quick check of result;
-
-```{r}
 msummary(var_est$varresult, stars = T, coef_map = coef_order, fmt = 3, statistic = "std.error",
          title = "Reduced-form VAR Estimation Results")
 
@@ -173,51 +169,103 @@ print("Roots")
 roots(var_est)
 ```
 
-## Bayesian
+## ベイズ推定
+
+$M$ 変数の VAR($p$) モデルは次のように書ける：
+
+$$
+y_t = a_0 + \sum_{j=1}^{p} A_j y_{t-j} + \varepsilon_t \qquad (2.1)
+$$
+
+ここで、
+
+- $y_t$ は $M \times 1$ の内生変数ベクトル
+- $a_0$ は $M \times 1$ の定数項
+- $A_j$ は $M \times M$ の係数行列
+- 誤差項は $\varepsilon_t \stackrel{i.i.d.}{\sim} N(0, \Sigma)$ と仮定する。
+
+各時点の回帰変数を $x_t = (1, y_{t-1}', \ldots, y_{t-p}')'$
+と定義する。
+
+これを $T$ 期間分スタックして、
+$$
+X =\begin{bmatrix} x_1'\\ x_2'\\ \vdots\\ x_T' \end{bmatrix} \qquad (2.2)
+$$
+とする。
+
+また、以下を定義する：
+
+- $K = 1 + Mp$（各方程式の説明変数の数）
+- $A = (a_0, A_1, \ldots, A_p)$：$K \times M$ の係数行列
+- $Y$ は $T \times M$ の被説明変数行列
+- $E$ は対応する誤差行列
+
+$T$ 期間のデータをまとめると、VAR は次のように書ける：
+$$
+\underbrace{Y}_{T \times M} = \underbrace{X}_{T \times K} \underbrace{A}_{K \times M} + E \qquad (2.3)
+$$
+
+式 (2.3) をベクトル化すると、
+$$
+y = \underbrace{(I_M \otimes X)}_{\begin{equation}\quad \,\,\, TM \times KM \\ \begin{bmatrix}X & 0 & \dots & 0\\  0 & X &\dots & 0 \\ \vdots & \vdots & \ddots & \vdots \\ 0 & 0 & \dots & X \end{bmatrix} \end{equation}}\underbrace{\alpha}_{KM \times 1} + \varepsilon \qquad (2.4)
+$$
+と書ける。
+
+ここで、
+
+- $y = \mathrm{vec}(Y)$
+- $\alpha = \mathrm{vec}(A)$：$KM \times 1$ の係数ベクトル
+- $\varepsilon = \mathrm{vec}(E)$
+- 誤差項は $\varepsilon \sim N(0, \Sigma \otimes I_T)$に従う。
 
 ```{r}
 M <- 3 # num of vars
 p <- p # num of lags
 K <- 1+M*p # num of total endos
 TT <- NROW(df_var)-p
+```
 
-Y <- df_var[(p+1):NROW(df_var),2:4] %>% as.matrix() # T * M
-y <- vec(Y)
 
-make_lagged_X <- function(df, vars, p, add_const = TRUE) {
+```{r}
+make_varmat_KK <- function(df, vars, p, add_const = TRUE) {
   stopifnot(p >= 1)
   stopifnot(all(vars %in% colnames(df)))
 
   T_df <- NROW(df)
+  M <- length(vars)
 
-  # ラグ行列
+  # Y: (T-p) x M  (drop first p observations)
+  Y <- df[(p + 1):T_df, vars, drop = F] %>% as.matrix()
+  # y = vec(Y) in column-major order
+  y <- as.vector(Y)
+
+  # X: (T-p) x K  (const + lagged regressors)
   X_list <- lapply(1:p, function(lag) {
-    tmp <- df[(p + 1 - lag):(T_df - lag), vars, drop = FALSE]
+    tmp <- df[(p + 1 - lag):(T_df - lag), vars, drop = F]
     colnames(tmp) <- paste0(vars, ".l", lag)
     tmp
   })
-
   X <- dplyr::bind_cols(X_list)
+  if (add_const) X <- dplyr::bind_cols(const = 1, X)
+  X <- as.matrix(X)
+  # Xbig = I_M kron X
+  I_M <- diag(M)
+  Xbig <- kronecker(I_M, X)
 
-  if (add_const) {
-    const <- rep(1, nrow(X))
-    X <- dplyr::bind_cols(const = const, X) %>% as.matrix()
-  }
-
-  return(X)
+  list(Y = Y, y = y, X = X, Xbig = Xbig)
 }
+```
 
-X <- make_lagged_X(df_var, c("lRGDP", "lDEF", "FF"), p = 12)
+```{r}
+vm <- make_varmat_KK(df_var, vars = c("lRGDP", "lDEF", "FF"), p = p, add_const = TRUE)
 
-I_M <- diag(M)
+Y    <- vm$Y
+y    <- vm$y
+X    <- vm$X
+Xbig <- vm$Xbig
 
 A_OLS <- solve(t(X) %*% X) %*% t(X) %*% Y
-X_big <- kronecker(I_M, X)
-alpha_OLS <- solve(t(X_big) %*% X_big) %*% t(X_big) %*% y
-vec(A_OLS)
-alpha_OLS
-round(vec(A_OLS)-alpha_OLS)
-
+alpha_OLS <- solve(t(Xbig) %*% Xbig) %*% t(Xbig) %*% y
 ```
 
 ### Minnesota Prior
@@ -251,8 +299,6 @@ a3 <- 0.1
 alpha_Mn <- matrix(0, M*K, 1)
 alpha_Mn[c(0*K+1+1, 1*K+2+1, 2*K+3+1)] <- 1
 
-cbind(alpha_OLS, alpha_Mn) %>% round(2)
-
 ### V
 V_Mn_diag <- rep(NA, M*K)
 
@@ -282,7 +328,7 @@ V_Mn <- diag(V_Mn_diag)
 ```{r}
 V_Mn_post <- solve(solve(V_Mn)+kronecker(solve(Omega_Mn), t(X) %*% X))
 alpha_Mn_post <- V_Mn_post %*% (solve(V_Mn) %*% alpha_Mn + kronecker(solve(Omega_Mn), t(X)) %*% y)
-cbind(alpha_OLS, alpha_Mn, alpha_Mn_post) %>% round(2)
+tibble(OLS = alpha_OLS, `Minn. Prior` = alpha_Mn, Posterior = alpha_Mn_post) %>% round(2)
 ```
 
 ```{r}

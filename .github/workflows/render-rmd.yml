@@ -27,7 +27,7 @@ jobs:
         run: |
           options(repos = c(CRAN = "https://cloud.r-project.org"))
           install.packages("remotes")
-          install.packages(c("rmarkdown", "knitr", "tidyverse", "matrixcalc", "vars", "zoo", "modelsummary", "quantmod"))
+          install.packages(c("rmarkdown", "knitr", "tidyverse", "vars", "zoo", "modelsummary", "quantmod"))
         shell: Rscript {0}
 
       - name: Render R Markdown files
