@@ -1,4 +1,4 @@
-name: Render and Deploy (Final Path Fix)
+name: Render and Deploy (Auto-Scan Folders)
 on:
   push:
     branches: [main]
@@ -37,6 +37,9 @@ jobs:
             conflicted
             bvartools
             MASS
+            gridExtra
+            plm
+            pgmm
 
       # --- Python セットアップ ---
       - name: Set up Python
@@ -49,21 +52,29 @@ jobs:
           python -m pip install --upgrade pip
           pip install nbconvert
 
-      # --- レンダリング実行 ---
+      # --- 自動レンダリング実行 ---
       - name: Render All Files
         run: |
-          # 1. ルート直下の index.Rmd
-          Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
-          
-          # 2. bayesian-var 内の index.Rmd
-          if [ -f "bayesian-var/index.Rmd" ]; then
-            Rscript -e 'rmarkdown::render("bayesian-var/index.Rmd", output_file = "index.html")'
+          # 1. ルート直下の index.Rmd を処理
+          if [ -f "index.Rmd" ]; then
+            Rscript -e 'rmarkdown::render("index.Rmd", output_file = "index.html")'
           fi
           
-          # 3. bem-chap10 内の index.ipynb (output-dirを追加)
-          if [ -f "bem-chap10/index.ipynb" ]; then
-            jupyter nbconvert --to html bem-chap10/index.ipynb --output-dir=./bem-chap10 --output index.html
-          fi
+          # 2. サブディレクトリを自動探索して処理
+          # .git や .github を除外して、全フォルダをループ
+          for dir in $(find . -maxdepth 2 -not -path '*/.*' -type d); do
+            # RMarkdown の処理
+            if [ -f "$dir/index.Rmd" ]; then
+              echo "Rendering Rmd in $dir"
+              Rscript -e "rmarkdown::render('$dir/index.Rmd', output_file = 'index.html')"
+            fi
+            
+            # Jupyter Notebook の処理
+            if [ -f "$dir/index.ipynb" ]; then
+              echo "Rendering ipynb in $dir"
+              jupyter nbconvert --to html "$dir/index.ipynb" --output-dir="$dir" --output index.html
+            fi
+          done
 
       # --- デプロイ ---
       - name: Deploy to GitHub Pages
