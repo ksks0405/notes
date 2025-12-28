@@ -1,4 +1,4 @@
-name: Render and Deploy (Simplified Path)
+name: Render and Deploy (Final Path Fix)
 on:
   push:
     branches: [main]
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- R セットアップ (高速バイナリ利用) ---
+      # --- R セットアップ ---
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -21,7 +21,6 @@ jobs:
       - name: Install Pandoc
         uses: r-lib/actions/setup-pandoc@v2
 
-      # 自動キャッシュ & 依存パッケージインストール
       - name: Install R packages
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -39,7 +38,7 @@ jobs:
             bvartools
             MASS
 
-      # --- Python セットアップ (ipynb 変換用) ---
+      # --- Python セットアップ ---
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -50,7 +49,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install nbconvert
 
-      # --- レンダリング実行 (シンプルかつ確実なパス指定) ---
+      # --- レンダリング実行 ---
       - name: Render All Files
         run: |
           # 1. ルート直下の index.Rmd
@@ -61,9 +60,9 @@ jobs:
             Rscript -e 'rmarkdown::render("bayesian-var/index.Rmd", output_file = "index.html")'
           fi
           
-          # 3. bem-chap10 内の index.ipynb
+          # 3. bem-chap10 内の index.ipynb (output-dirを追加)
           if [ -f "bem-chap10/index.ipynb" ]; then
-            jupyter nbconvert --to html bem-chap10/index.ipynb --output index.html
+            jupyter nbconvert --to html bem-chap10/index.ipynb --output-dir=./bem-chap10 --output index.html
           fi
 
       # --- デプロイ ---
