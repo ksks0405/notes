@@ -46,7 +46,8 @@ knitr::opts_chunk$set(
   results = "hold",
   fig.show = "hold",
   message = F, # when hiding messages
-  warning = F  # when hiding errors
+  warning = F,  # when hiding errors
+  class.source = 'fold-hide'
 )
 knitr::opts_hooks$set(label = function(options) {
   options$before = paste0('<div>Chunk: ', options$label, '</div>')
@@ -146,12 +147,14 @@ df_var
 
 ## OLS
 
-`vars::VAR`を利用
+ラグ・データセットの設定
 
 ```{r REG setting}
 p <- 5
 ts_var <- to_ts_quarterly(df_var)
 ```
+
+`vars::VAR`を利用
 
 ```{r REG var}
 var_est <- VAR(ts_var, p = p, type = "const")
@@ -177,6 +180,8 @@ roots(var_est)
 
 ## ベイズ推定
 
+**スカラー**
+
 $M$ 変数の VAR($p$) モデルは次のように書ける：
 
 $$
@@ -188,18 +193,16 @@ $$
 - $y_t$ は $M \times 1$ の内生変数ベクトル
 - $a_0$ は $M \times 1$ の定数項
 - $A_j$ は $M \times M$ の係数行列
-- 誤差項は $\varepsilon_t \stackrel{i.i.d.}{\sim} N(0, \Sigma)$ と仮定する。
+- 誤差項は $\varepsilon_t \stackrel{i.i.d.}{\sim} N(0, \Sigma)$。
 
-各時点の回帰変数を $x_t = (1, y_{t-1}', \ldots, y_{t-p}')'$
-と定義する。
+**行列形式**
 
-これを $T$ 期間分スタックして、
+各時点の回帰変数を $x_t = (1, y_{t-1}', \ldots, y_{t-p}')'$ と定義する。これを $T$ 期間分スタックして、
+
 $$
 X =\begin{bmatrix} x_1'\\ x_2'\\ \vdots\\ x_T' \end{bmatrix} \qquad (2.2)
 $$
-とする。
-
-また、以下を定義する：
+とする。また、以下を定義する：
 
 - $K = 1 + Mp$（各方程式の説明変数の数）
 - $A = (a_0, A_1, \ldots, A_p)$：$K \times M$ の係数行列
@@ -207,32 +210,41 @@ $$
 - $E$ は対応する誤差行列
 
 $T$ 期間のデータをまとめると、VAR は次のように書ける：
+
 $$
 \underbrace{Y}_{T \times M} = \underbrace{X}_{T \times K} \underbrace{A}_{K \times M} + E \qquad (2.3)
 $$
 
+**vec形式**
+
 式 (2.3) をベクトル化すると、
+
 $$
 y = \underbrace{(I_M \otimes X)}_{\begin{equation}\quad \,\,\, TM \times KM \\ \begin{bmatrix}X & 0 & \dots & 0\\  0 & X &\dots & 0 \\ \vdots & \vdots & \ddots & \vdots \\ 0 & 0 & \dots & X \end{bmatrix} \end{equation}}\underbrace{\alpha}_{KM \times 1} + \varepsilon \qquad (2.4)
 $$
-と書ける。
-
-ここで、
+と書ける。ここで、
 
 - $y = \mathrm{vec}(Y)$
 - $\alpha = \mathrm{vec}(A)$：$KM \times 1$ の係数ベクトル
 - $\varepsilon = \mathrm{vec}(E)$
-- 誤差項は $\varepsilon \sim N(0, \Sigma \otimes I_T)$に従う。
+- 誤差項は $\varepsilon \sim N(0, \Sigma \otimes I_T)$。
 
-```{r}
-M <- 3 # num of vars
+以下では、行列形式・vec形式のデータを定義している。
+
+- ラグ数（$p$）、内生変数の数（$M$）、説明変数の数（$K \equiv pM + 1$）、時系列観測数（$T$ or `TT`）
+
+```{r SET parameter, class.source = 'fold-show'}
 p <- p # num of lags
+M <- 3 # num of vars
 K <- 1+M*p # num of total endos
-TT <- NROW(df_var)-p
+TT <- NROW(df_var)-p # num of time obs.
 ```
 
+- $Y \,(T \times M)$、$X \,(T \times K)$、$y \, (TM \times 1)$、$I_M \otimes X \, (TM \times KM)$
 
-```{r}
+`make_varmat_KK`関数の定義
+
+```{r FUN make variant kk, class.source = 'fold-show'}
 make_varmat_KK <- function(df, vars, p, add_const = TRUE) {
   stopifnot(p >= 1)
   stopifnot(all(vars %in% colnames(df)))
@@ -262,28 +274,34 @@ make_varmat_KK <- function(df, vars, p, add_const = TRUE) {
 }
 ```
 
-```{r}
+実行・確認
+
+```{r SET data matrix, class.source = 'fold-show'}
 vm <- make_varmat_KK(df_var, vars = c("lRGDP", "lDEF", "FF"), p = p, add_const = TRUE)
 
-Y    <- vm$Y
-y    <- vm$y
-X    <- vm$X
-Xbig <- vm$Xbig
+Y <- vm$Y; X <- vm$X; y <- vm$y; Xbig <- vm$Xbig
+```
 
+```{r EXP dimension}
+print("dim Y \n"); print(dim(Y)) 
+print("dim X \n"); print(dim(X)) 
+print("dim y \n"); print(dim(y))
+print("dim Im Kron X \n"); print(dim(Xbig)) 
+```
+
+```{r REG ols result}
 A_OLS <- solve(t(X) %*% X) %*% t(X) %*% Y
 alpha_OLS <- solve(t(Xbig) %*% Xbig) %*% t(Xbig) %*% y
 ```
 
-### Minnesota Prior
+### ミネソタ事前分布
 
 モデル再掲：
 $$
 y = (I_M \otimes X)\alpha + \varepsilon, \qquad \varepsilon \sim N(0, \Sigma \otimes I_T)
 $$
 
-$\alpha = \mathrm{vec}(A)$ は $KM \times 1$ ベクトル。
-
-Minnesota Prior では、係数ベクトル $\alpha$ に対して次の正規事前分布を仮定する：
+Minnesota Prior では、係数ベクトル $\alpha \, (KM \times 1)$ に対して次の正規事前分布を仮定する：
 
 $$
 \alpha|\Sigma \sim N(\underline{\alpha}_{Mn}, \underline{V}_{Mn}), 
@@ -301,8 +319,12 @@ $$
 \Sigma = \hat{\Sigma}
 $$
 
-```{r}
+```{r SET minnesota sigma}
 Omega_Mn <- summary(var_est)$covres
+```
+
+```{r EXP minnesota sigma}
+print("Omega_Mn")
 as_tibble(Omega_Mn, rownames = " ")
 ```
 
@@ -312,8 +334,7 @@ as_tibble(Omega_Mn, rownames = " ")
 
 > Thus, $\underline{\alpha}_{Mn} = 0_{KM}$ except for the elements corresponding to the first own lag of the dependent variable in each equation. These elements are set to one. These are the traditional choices for $\underline{\alpha}_{Mn}$, but anything is possible.
 
-すなわち、事前平均ベクトル $\underline{\alpha}_{Mn}$は基本的にゼロベクトルであるが、  
-**各方程式における自分自身の第1ラグの係数のみ 1** に設定される。
+すなわち、事前平均ベクトル $\underline{\alpha}_{Mn}$は基本的にゼロベクトルであるが、**各方程式における自分自身の第1ラグの係数のみ 1** に設定される。
 
 係数 $\beta_{i,j,l}$（第 $i$ 方程式における、第 $j$ 変数の第 $l$ ラグ）について書けば、
 
@@ -331,7 +352,7 @@ $$
 
 #### 事前分散（prior variance）
 
-Koop and Korobilis (2010) の式 (2.8) に従い、係数の事前分散は次のように設定される。
+Koop and Korobilis (2010) の式 (2.8)に従い、係数の事前分散は次のように設定される。
 
 $$
 \underline{V}_{Mn, i,jj} = \begin{cases}
@@ -357,31 +378,8 @@ $$
 
 この分散構造により、高次ラグほど、また他変数のラグほど、係数はより強くゼロへと縮小される。
 
-### 事後分布
 
-誤差分散共分散行列 $\Sigma$ が既知のため、Minnesota prior と正規尤度の共役性により、事後分布は正規分布となる。
-
-$$
-\alpha \mid y, \Sigma \sim N\!\left( \bar{\alpha}_{Mn}, \bar{V}_{Mn} \right)
-$$
-
-ここで、事後分散行列は
-
-$$
-\bar{V}_{Mn} = \left( \underline{V}_{Mn}^{-1} + \Sigma^{-1} \otimes X'X \right)^{-1}
-$$
-
-事後平均は
-
-$$
-\bar{\alpha}_{Mn} =\bar{V}_{Mn} \left( \underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}+ (\Sigma^{-1} \otimes X')y \right)
-$$
-
-で与えられる。
-
-**Minnesota prior は、OLS 推定量を事前平均の方向へ縮小する役割を果たし、  特に高次ラグおよび他変数のラグに対して強い縮小を課すことで、高次元 VAR における過剰パラメータ化を防ぐ。**
-
-```{r}
+```{r REG minnesota prior, class.source = 'fold-show'}
 ### hyperparamter
 a1 <- 1
 a2 <- 0.5
@@ -417,13 +415,45 @@ for (i in 1:M) {
 V_Mn <- diag(V_Mn_diag)
 ```
 
-```{r}
+#### 事後分布
+
+誤差分散共分散行列 $\Sigma$ が既知のため、Minnesota prior と正規尤度の共役性により、事後分布は正規分布となる。
+
+$$
+\alpha \mid y, \Sigma \sim N\!\left( \bar{\alpha}_{Mn}, \bar{V}_{Mn} \right)
+$$
+
+ここで、事後分散行列は
+
+$$
+\bar{V}_{Mn} = \left( \underline{V}_{Mn}^{-1} + \Sigma^{-1} \otimes X'X \right)^{-1}
+$$
+
+```{r REG minnesota v, class.source = 'fold-show'}
 V_Mn_post <- solve(solve(V_Mn)+kronecker(solve(Omega_Mn), t(X) %*% X))
-alpha_Mn_post <- V_Mn_post %*% (solve(V_Mn) %*% alpha_Mn + kronecker(solve(Omega_Mn), t(X)) %*% y)
-tibble(OLS = alpha_OLS, `Minn. Prior` = alpha_Mn, Posterior = alpha_Mn_post) %>% round(2)
 ```
 
-```{r}
+事後平均は
+
+$$
+\bar{\alpha}_{Mn} =\bar{V}_{Mn} \left( \underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}+ (\Sigma^{-1} \otimes X')y \right)
+$$
+
+```{r REG minnesota alpha, class.source = 'fold-show'}
+alpha_Mn_post <- V_Mn_post %*% (solve(V_Mn) %*% alpha_Mn + kronecker(solve(Omega_Mn), t(X)) %*% y)
+```
+
+
+で与えられる。
+
+**Minnesota prior は、OLS 推定量を事前平均の方向へ縮小する役割を果たし、  特に高次ラグおよび他変数のラグに対して強い縮小を課すことで、高次元 VAR における過剰パラメータ化を防ぐ。**
+
+```{r EXP minnesota result, class.source = 'fold-show'}
+print("推計結果（OLS v.s. Minnesota Prior")
+tibble(OLS = as.vector(alpha_OLS), `Minn. Prior` = as.vector(alpha_Mn), Posterior = as.vector(alpha_Mn_post)) %>% round(2)
+```
+
+```{r EXP minnesota shrinkage}
 A_OLS
 A_Mn_post <- matrix(as.vector(alpha_Mn_post), nrow = K, ncol = M, byrow = F)
 
@@ -487,13 +517,16 @@ plots <- lapply(levels(factor(df$eq)), function(eq_i) {
 for (g in plots) print(g)
 ```
 
-#### ダミー観測値
+### ミネソタ事前分布（ダミー観測値）
+
+#### マッピング
 
 Kilian and Lütkepohl (2016) のとおり、係数ベクトル  
 
 $$
 \alpha = \mathrm{vec}(A)
 $$
+
 に対する正規事前分布は、次の **dummy observation（mixed estimation）形式**で表現できる：
 
 $$
@@ -505,11 +538,7 @@ $$
 - $C$ は事前分散行列の精度に対応する行列
 - $c$ は事前平均に対応するベクトル
 
-であり、事前分布
-$$
-\alpha \sim N(\underline{\alpha}_{Mn}, \underline{V}_{Mn})
-$$
-と次の対応関係を持つ：
+であり、事前分布$\alpha \sim N(\underline{\alpha}_{Mn}, \underline{V}_{Mn})$と次の対応関係を持つ：
 
 $$
 \underline{V}_{Mn} = (C'C)^{-1}, \qquad \underline{\alpha}_{Mn} = C^{-1}c.
@@ -524,7 +553,29 @@ $$
 y = \underbrace{(I_M \otimes X)}_{TM\times KM} \alpha + \varepsilon, \qquad \varepsilon \sim N(0,\; \underbrace{\Sigma}_{M\times M}\otimes I_T) \tag{5.2.9}
 $$
 
+```{r REG minn dummy mapping, class.source = 'fold-show'}
+Cinv <- chol(V_Mn)
+# round(Cinv %*% (t(Cinv)),4)==round(V_Mn,4)
+C <- solve(Cinv)
+c <- C %*% alpha_Mn
+
+y_dum <- rbind(matrix(y, ncol = 1), c)
+Xbig_dum <- rbind(Xbig, C)
+
+n_data  <- length(y)     # = TT*M
+n_prior <- nrow(C)       # = K*M
+
+Omega_data_inv  <- kronecker(solve(Omega_Mn), diag(TT))
+Omega_prior_inv <- diag(n_prior)
+
+Omega_inv <- matrix(0, n_data + n_prior, n_data + n_prior)
+Omega_inv[1:n_data, 1:n_data] <- Omega_data_inv
+Omega_inv[(n_data+1):(n_data+n_prior), (n_data+1):(n_data+n_prior)] <- Omega_prior_inv
+```
+
 となる（再掲）。
+
+#### 拡張回帰
 
 prior と likelihood を結合すると、次の **拡張回帰モデル**が得られる：
 
@@ -550,11 +601,7 @@ N\!\left(
 \tag{5.2.11}
 $$
 
-このモデルは、**prior を dummy observation として加えた GLS 問題**である。
-
----
-
-したがって、係数ベクトル $\alpha$ の **事後平均（MAP 推定量）**は、  
+このモデルは、**prior を dummy observation として加えた GLS 問題**である。したがって、係数ベクトル $\alpha$ の **事後平均（MAP 推定量）**は、  
 次の GLS 推定量として与えられる：
 
 $$
@@ -581,8 +628,24 @@ y
 \right).
 $$
 
-これは、正規事前分布と正規尤度の共役性から得られる
-closed-form の事後平均
+```{r REG minn dummy, class.source = 'fold-show'}
+# ---- GLS estimator on augmented system ----
+# alpha_gls = (X' Ω^{-1} X)^{-1} X' Ω^{-1} y
+Xt_Oinv <- t(Xbig_dum) %*% Omega_inv
+alpha_Mn_gls_dummy <- solve(Xt_Oinv %*% Xbig_dum, Xt_Oinv %*% y_dum)
+
+# ---- compare with closed-form posterior mean ----
+diff_vec <- as.vector(alpha_Mn_post - alpha_Mn_gls_dummy)
+cat("Max abs diff (closed-form vs GLS dummy): ", max(abs(diff_vec)), "\n")
+cat("Mean abs diff: ", mean(abs(diff_vec)), "\n")
+
+# ---- optional: reshape to K x M for readability ----
+A_Mn_gls_dummy <- matrix(as.vector(alpha_Mn_gls_dummy), nrow = K, ncol = M, byrow = FALSE)
+colnames(A_Mn_gls_dummy) <- colnames(A_OLS)
+rownames(A_Mn_gls_dummy) <- rownames(A_OLS)
+```
+
+これは、正規事前分布と正規尤度の共役性から得られるclosed-form の事後平均
 
 $$
 \bar{\alpha}_{Mn}
@@ -605,17 +668,14 @@ $$
 
 と完全に一致する。
 
-
 このように、Minnesota prior を用いた Bayesian VAR は、
 
 > **「本来のデータに、prior に由来する dummy observation を加えた GLS 推定」**
 
 として解釈できる。
 
-この表現は、Theil (1963) の mixed estimation に基づき、  
-Kilian and Lütkepohl (2016, Section 5.2) において体系的に整理されている。
 
-## Koop & Korobilis (2010) と Kilian & Lütkepohl (2016) の notation の違い
+#### Koop & Korobilis (2010) と Kilian & Lütkepohl (2016) の notation の違い
 
 Bayesian VAR のベクトル化表現は、Koop and Korobilis (2010, KK) と  
 Kilian and Lütkepohl (2016, KL) で見かけ上異なる形で書かれているが、  
@@ -625,7 +685,7 @@ Kilian and Lütkepohl (2016, KL) で見かけ上異なる形で書かれてい�
 
 ---
 
-### 1. ベクトル化（vec）の取り方
+##### 1. ベクトル化（vec）の取り方
 
 - **KK**  
   被説明変数行列 $Y$ に対して **列方向の vec** を取る：
@@ -649,7 +709,7 @@ Kilian and Lütkepohl (2016, KL) で見かけ上異なる形で書かれてい�
 
 ---
 
-### 2. 設計行列の違い
+##### 2. 設計行列の違い
 
 VAR($p$) を
 $$
@@ -687,7 +747,7 @@ $$
 
 ---
 
-### 3. 誤差分散行列の違い
+##### 3. 誤差分散行列の違い
 
 - **KK**
   $$
@@ -711,7 +771,7 @@ Kronecker 積の順序が入れ替わる。
 
 ---
 
-### 4. 本質的に同値である理由
+##### 4. 本質的に同値である理由
 
 Kronecker 積と vec の基本恒等式により、
 $$
@@ -729,7 +789,7 @@ $$
 
 ---
 
-### 5. 実装上の重要な注意点
+##### 5. 実装上の重要な注意点
 
 - 一度 **KK 流**（$I_M \otimes X$, $\Sigma \otimes I_T$）を採用したら、
   - 係数ベクトルの並び
@@ -757,42 +817,6 @@ $$
 
 
 
-```{r}
-Cinv <- chol(V_Mn)
-# round(Cinv %*% (t(Cinv)),4)==round(V_Mn,4)
-C <- solve(Cinv)
-c <- C %*% alpha_Mn
-
-y_dum <- rbind(matrix(y, ncol = 1), c)
-Xbig_dum <- rbind(Xbig, C)
-
-n_data  <- length(y)     # = TT*M
-n_prior <- nrow(C)       # = K*M
-
-Omega_data_inv  <- kronecker(solve(Omega_Mn), diag(TT))
-Omega_prior_inv <- diag(n_prior)
-
-Omega_inv <- matrix(0, n_data + n_prior, n_data + n_prior)
-Omega_inv[1:n_data, 1:n_data] <- Omega_data_inv
-Omega_inv[(n_data+1):(n_data+n_prior), (n_data+1):(n_data+n_prior)] <- Omega_prior_inv
-```
-
-```{r}
-# ---- GLS estimator on augmented system ----
-# alpha_gls = (X' Ω^{-1} X)^{-1} X' Ω^{-1} y
-Xt_Oinv <- t(Xbig_dum) %*% Omega_inv
-alpha_Mn_gls_dummy <- solve(Xt_Oinv %*% Xbig_dum, Xt_Oinv %*% y_dum)
-
-# ---- compare with closed-form posterior mean ----
-diff_vec <- as.vector(alpha_Mn_post - alpha_Mn_gls_dummy)
-cat("Max abs diff (closed-form vs GLS dummy): ", max(abs(diff_vec)), "\n")
-cat("Mean abs diff: ", mean(abs(diff_vec)), "\n")
-
-# ---- optional: reshape to K x M for readability ----
-A_Mn_gls_dummy <- matrix(as.vector(alpha_Mn_gls_dummy), nrow = K, ncol = M, byrow = FALSE)
-colnames(A_Mn_gls_dummy) <- colnames(A_OLS)
-rownames(A_Mn_gls_dummy) <- rownames(A_OLS)
-```
 
 
 https://www.r-econometrics.com/timeseries/bvar/   
