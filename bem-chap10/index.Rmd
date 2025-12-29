@@ -731,6 +731,44 @@ $$
 
 $\dot{\nu}\dot{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} \bar{s}^2$ に$\beta$に依存する$({\beta}-\bar{\beta})'\bar{Q}^{-1}({\beta}-\bar{\beta})$を足したもの。
 
+#### アルゴリズム
+
+- 初期化：
+  $h^{(0)} > 0$ を与える（例：$h^{(0)}=1$）。以後 $s=1,...,S$ を反復。
+
+- Step 1（$β | h, y$ をドロー）：
+  $β^{(s)} \sim N( \dot\beta , (h^{(s-1)})^{-1} \dot Q )$
+  （直前の $h^{(s-1)}$ を固定して多変量正規分布からサンプル。）
+
+- Step 2（$h | β, y$ をドロー）：
+  $h^{(s)} \sim γ( \dot s^{-2} , \dot \nu)$
+  ここで
+    $\dot \nu = \bar ν + k$,
+    $\dot \nu \dot s^2 = \bar{\nu} * \bar{s}^2 + (β^(s) - \bar{\beta})' * \bar{Q}^{-1} * (β^{(s)} - \bar{\beta})$.
+  （Step 1 の $β^{(s)}$ を固定して Gamma 分布からサンプル。）
+
+- 反復：
+  上の Step 1–2 を S 回繰り返すと、{(β^(s), h^(s))} は p(β,h|y) のサンプル列になる
+  （バーンインは適宜捨てる）。
+
+
+[メモ] γ( s_dot^{-2} , ν_dot ) と Γ(shape, rate) の対応（R の rgamma は shape-rate）
+
+BEM流に
+  h | β, y ~ γ( s_dot^{-2} , ν_dot )
+と書くとき、これは密度の核が
+  p(h | β, y) ∝ h^{ν_dot/2 - 1} * exp( - (ν_dot * s_dot^2 / 2) * h ),   h>0
+という意味。
+
+したがって、R の rgamma(shape=, rate=)（＝ Γ(shape, rate)）で書くと
+  h ~ Γ( shape = ν_dot/2 ,  rate = (ν_dot * s_dot^2)/2 ).
+
+※ scale を使う実装では rate = 1/scale なので
+  scale = 2 / (ν_dot * s_dot^2).
+
+
+
+
 ```{r REG Gibbs sampling, class.source='fold-hide'}
 # Notation (matching the notes)
 #   beta_bar = \bar{\beta}
