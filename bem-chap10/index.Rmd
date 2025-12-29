@@ -104,21 +104,31 @@ p(y|\beta, \sigma^2) &= \prod_{n=1}^N \left[ \frac{1}{\sqrt{2\pi }\sigma} \exp \
 &= \left( \frac{1}{2\pi\sigma^2} \right)^{N/2} \exp \left[ -\frac{1}{2\sigma^2}(y-X\beta)'(y-X\beta) \right].
 \end{aligned} 
 $$
-
-ここで
+または、$h$を使って
 $$
-(y-X\beta)'(y-X\beta)=SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})
+p(y|\beta, h)= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}(y-X\beta)'(y-X\beta) \right] \quad \text{(Koop 3.3)}. 
+$$
+
+ここで、OLS推定量を
+$$
+\begin{alignat}{2}
+\hat{\beta}&=(X'X)^{-1}X'y\\
+SSE &= (y - X\hat{\beta})'(y - X\hat{\beta})\\
+\nu &= N-k && \quad \text{(Koop 3.4)}\\
+\hat{s}^2 &= \frac{SSE}{\nu}
+\end{alignat}
+$$
+とすると、
+$$
+(y-X\beta)'(y-X\beta)=SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})=\nu \hat{s}^2+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})
 $$
 より、
 $$
-p(y|\beta, \sigma^2)= \left( \frac{1}{2\pi\sigma^2} \right)^{N/2} \exp \left[ -\frac{1}{2\sigma^2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right]
-$$
-または、
-$$
-p(y|\beta, h)= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] \tag{BEM 10.4 or Koop 3.3}, 
-$$
-$$
-p(y|\beta, h)= \left( \frac{1}{2\pi} \right)^{N/2} h^\frac{k}{2} \exp \left[ -\frac{h}{2}(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right] h^\frac{\nu}{2} \exp \left[ -\frac{h\nu}{2s^{-2}} \right] \tag{Koop 3.7}
+\boxed{\begin{alignedat}{2}
+p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] &&\quad \text{(BEM 10.4)}, \\
+\text{or}\\
+p(y|\beta, h)&= \left( \frac{1}{2\pi} \right)^{N/2} \underbrace{ \left\{h^\frac{k}{2} \exp \left[ -\frac{h}{2}(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right]\right\} }_{\text{(Normalっぽい)}} \underbrace{ \left\{h^\frac{\nu}{2} \exp \left[ -\frac{h\nu}{2\hat{s}^{-2}} \right]\right\} }_{\text{(Gammaっぽい)}} &&\quad \text{(Koop 3.7)}
+\end{alignedat}}
 $$
 
 # 事前分布
@@ -126,7 +136,6 @@ $$
 次に、パラメータ$\{\beta, h\}$について**prior**（事前分布）を当てはめる。ここでは、自然共役分布として、Normal-Gamma分布を考える。Normal-Gamma分布とは、…(def)。ここでは、以下の**Hyperparameter**を考える。
 
 ## Gamma分布
-
 
 一般に、Gamma分布の密度関数は、パラメータ$\alpha$、$\beta$を用いて
 $$
@@ -162,9 +171,7 @@ p(\beta|h; \underline{\beta}, \underline{Q}) &= \frac{1}{2\pi^{\frac{1}{2}k}}|h^
 
 # 事後分布
 
-モデルの尤度と事前分布が与えられることで、ベイズの定理に基づき事後分布を計算することができる。
-
-## 結合分布
+モデルの**尤度**と**事前分布**が与えられることで、ベイズの定理に基づき**事後分布**を計算することができる。
 
 $$ \boxed{\begin{alignedat}{3}
 p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] && \quad \dots \text{尤度}\\
@@ -172,29 +179,37 @@ p(h; \underline{s}, \underline{\nu}) &={C_\gamma}^{-1} h^{\underline{\nu}-2/2} \
 p(\beta|h,\underline{\beta}, \underline{Q}) &=\left( \frac{h}{2\pi} \right)^{\frac{1}{2}k} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]  && \quad \dots \text{事前分布（正規分布部分）}
 \end{alignedat}} $$
 
-よって、
+## 結合分布
+
+ベイズの定理より、
 $$ \begin{aligned}
-p(\beta, h |y) &\propto \underbrace{ p(\beta | h; \underline{\beta},\underline{Q})p(h; \underline{s}, \underline{\nu}) }_{=p(\beta, h; \underline{\beta},\underline{Q}, \underline{s}, \underline{\nu})} \times p(y|\beta, h)\\
-&=  \left( \frac{h}{2\pi} \right)^{\frac{1}{2}k} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\\
-&\quad \times {C_\gamma}^{-1} h^{\underline{\nu}-2/2} \cdot \exp\left[-\frac{h}{2} \frac{\underline{\nu}}{\underline{s}^{-2}}\right] \\
-&\quad \times \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right]\\
+p(\beta, h |y) &\propto \underbrace{ p(\beta | h; \underline{\beta},\underline{Q})p(h; \underline{s}, \underline{\nu})}_{=p(\beta, h; \underline{\beta},\underline{Q}, \underline{s}, \underline{\nu});\text{ HPで規定されるparameterの事前分布}} \times \underbrace{ p(y|\beta, h) }_\text{parameterで条件づけられた尤度}\\
+&=  \left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\quad\dots\text{事前分布（正規）}\\
+&\quad \times {C_\gamma}^{-1} h^{(\underline{\nu}-2)/2} \cdot \exp\left[-\frac{h}{2} \frac{\underline{\nu}}{\underline{s}^{-2}}\right] \quad\dots\text{事前分布（Gamma）}\\
+&\quad \times \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] \quad\dots\text{尤度}\\
 & \propto h^{\frac{k+\underline{\nu}-2+N}{2}} \exp \left[ -\frac{h}{2} \left\{\underline{\nu}\underline{s}^{2}+SSE+(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\right\} \right].
 \end{aligned} $$
+ここで、$(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$の部分は、
 
-後述の書き換えを用いると、
+- $(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})$: $\beta$のprior$\underline\beta$からの距離
+- $(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$:$\beta$最尤推定値$\hat\beta$からの距離
+
+と解釈できる。また、これらの部分に後述の書き換えを用いると、以下のように表せる。
 $$
 \boxed{\begin{aligned}
 p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
 -\frac{h}{2}\Big\{ &\underline{\nu}\underline{s}^{2}+SSE +(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})\\ &
-+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta})
++\underbrace{ (\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}) }_{\beta\text{に依存しない！（$h$には依存）}}
 \Big\} \Bigg],
 \end{aligned}}
 $$
-$$ \begin{aligned}
-&\bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},\\
-&\bar{\beta} = \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}), \\
-&\bar{\nu} = \underline{\nu}+N \quad (\text{Koop 2.29}).
-\end{aligned}$$
+$$ \begin{alignedat}{2}
+&\bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},&&\quad \text{(Koop 3.10)}\\
+&\bar{\beta} = \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}), &&\quad \text{(Koop 3.11)}\\
+&\bar{\nu} = \underline{\nu}+N &&\quad \text{(Koop 3.12)}
+\end{alignedat}$$
+
+★BEM p 110 nu, sのposterior
 
 ## $\beta$の条件つき事後分布
 
@@ -653,20 +668,31 @@ ggplot(grid_df, aes(x = beta1, y = h, fill = posterior)) +
 ここでは、条件付き事後分布のパラメータを$\{\tilde{\beta},\tilde{Q},\tilde{\nu},\tilde{s}\}$と書く。
 $\beta$の条件付き事後分布は、解析解で導出済み。すなわち、
 
-$$ \boxed{\beta|h \sim N(\tilde{\beta},h^{-1}\tilde Q),}$$
-$$\begin{aligned}
+$$
+\boxed{\beta|h \sim N(\tilde{\beta},h^{-1}\tilde Q),}
+$$
+$$
+\text{where}\quad \begin{aligned}
 \tilde{Q} &= \bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},\\
 \tilde{\beta} &= \bar{\beta}= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}).
-\end{aligned}$$
+\end{aligned}
+$$
 
 一方、$h$については$\beta$を定数項として扱うことで、下記のパラメータに従うGamma分布として定義できる:
-$$ \boxed{h|\beta \sim \gamma(\tilde{s}^{-2},\tilde{\nu}),}$$
-\
-$$\begin{aligned}
+
+$$
+\boxed{h|\beta \sim \gamma(\tilde{s}^{-2},\tilde{\nu}),}
+$$
+
+$$
+\begin{aligned}
 \tilde{\nu}&=\underline{\nu}+N,\\[1em]
 \tilde{\nu}\tilde{s}^2 &= \underbrace{ \underline{\nu}\underline{s}^{2}+SSE+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }_{=\bar{\nu} \bar{s}^2}+(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta})\\
 &= \bar{\nu} \bar{s}^2+(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}).
-\end{aligned}$$
+\end{aligned}
+$$
+
+ここで、$\tilde{\nu}\tilde{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} \bar{s}^2$ に加え、$\beta$をintegrate out した場合と違うのは、
 
 ```{r REG Gibbs sampling, class.source='fold-hide'}
 
