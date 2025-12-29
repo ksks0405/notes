@@ -114,18 +114,18 @@ $$
 \begin{alignat}{2}
 \hat{\beta}&=(X'X)^{-1}X'y\\
 SSE &= (y - X\hat{\beta})'(y - X\hat{\beta})\\
-\nu &= N-k && \quad \text{(Koop 3.4)}\\
+\hat{\nu} &= N-k && \quad \text{(Koop 3.4)}\\
 \hat{s}^2 &= \frac{SSE}{\nu}
 \end{alignat}
 $$
 とすると、
 $$
-(y-X\beta)'(y-X\beta)=SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})=\nu \hat{s}^2+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})
+(y-X\beta)'(y-X\beta)=SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})=\hat{\nu}\hat{s}^2+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})
 $$
 より、
 $$
 \boxed{\begin{alignedat}{2}
-p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] &&\quad \text{(BEM 10.4)}, \\
+p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \underbrace{ \hat{\nu}\hat{s}^2 }_{=SSE}+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] &&\quad \text{(BEM 10.4)}, \\
 \text{or}\\
 p(y|\beta, h)&= \left( \frac{1}{2\pi} \right)^{N/2} \underbrace{ \left\{h^\frac{k}{2} \exp \left[ -\frac{h}{2}(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right]\right\} }_{\text{(Normalっぽい)}} \underbrace{ \left\{h^\frac{\nu}{2} \exp \left[ -\frac{h\nu}{2\hat{s}^{-2}} \right]\right\} }_{\text{(Gammaっぽい)}} &&\quad \text{(Koop 3.7)}
 \end{alignedat}}
@@ -174,77 +174,105 @@ p(\beta|h; \underline{\beta}, \underline{Q}) &= \frac{1}{2\pi^{\frac{1}{2}k}}|h^
 モデルの**尤度**と**事前分布**が与えられることで、ベイズの定理に基づき**事後分布**を計算することができる。
 
 $$ \boxed{\begin{alignedat}{3}
-p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] && \quad \dots \text{尤度}\\
+p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \nu \hat{s}^2 +(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] && \quad \dots \text{尤度}\\
 p(h; \underline{s}, \underline{\nu}) &={C_\gamma}^{-1} h^{\underline{\nu}-2/2} \cdot \exp\left[-\frac{1}{2} h \frac{\underline{\nu}}{\underline{s}^{-2}}\right]  && \quad \dots \text{事前分布（Gamma部分）}\\
-p(\beta|h,\underline{\beta}, \underline{Q}) &=\left( \frac{h}{2\pi} \right)^{\frac{1}{2}k} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]  && \quad \dots \text{事前分布（正規分布部分）}
+p(\beta|h,\underline{\beta}, \underline{Q}) &=\left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]  && \quad \dots \text{事前分布（正規分布部分）}
 \end{alignedat}} $$
 
 ## 結合分布
 
 ベイズの定理より、
 $$ \begin{aligned}
-p(\beta, h |y) &\propto \underbrace{ p(\beta | h; \underline{\beta},\underline{Q})p(h; \underline{s}, \underline{\nu})}_{=p(\beta, h; \underline{\beta},\underline{Q}, \underline{s}, \underline{\nu});\text{ HPで規定されるparameterの事前分布}} \times \underbrace{ p(y|\beta, h) }_\text{parameterで条件づけられた尤度}\\
-&=  \left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\quad\dots\text{事前分布（正規）}\\
-&\quad \times {C_\gamma}^{-1} h^{(\underline{\nu}-2)/2} \cdot \exp\left[-\frac{h}{2} \frac{\underline{\nu}}{\underline{s}^{-2}}\right] \quad\dots\text{事前分布（Gamma）}\\
-&\quad \times \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] \quad\dots\text{尤度}\\
-& \propto h^{\frac{k+\underline{\nu}-2+N}{2}} \exp \left[ -\frac{h}{2} \left\{\underline{\nu}\underline{s}^{2}+SSE+(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\right\} \right].
+p(\beta, h |y) &\propto \underbrace{p(\beta, h; \underline{\beta},\underline{Q}, \underline{s}, \underline{\nu})}_{\text{ HPで規定されるparameterの事前分布}} \times \underbrace{ p(y|\beta, h) }_\text{parameterで条件づけられた尤度}\\
+&= \quad p(\beta | h; \underline{\beta},\underline{Q})p(h; \underline{s}, \underline{\nu}) \quad \times \quad p(y|\beta, h)\\[1em]
+\Rightarrow \,p(\beta, h |y) &\propto \left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\quad\dots\text{事前分布（正規）}\\
+&\quad \quad \times {C_\gamma}^{-1} h^{(\underline{\nu}-2)/2} \cdot \exp\left[-\frac{h}{2} \frac{\underline{\nu}}{\underline{s}^{-2}}\right] \quad\dots\text{事前分布（Gamma）}\\
+&\quad \quad \times \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \hat{\nu} \hat{s}^2 +(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] \quad\dots\text{尤度}\\
+& \propto h^{\frac{k+\underline{\nu}-2+N}{2}} \exp \left[ -\frac{h}{2} \left\{\underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\right\} \right].
 \end{aligned} $$
 ここで、$(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$の部分は、
 
 - $(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})$: $\beta$のprior$\underline\beta$からの距離
 - $(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$:$\beta$最尤推定値$\hat\beta$からの距離
 
-と解釈できる。また、これらの部分に後述の書き換えを用いると、以下のように表せる。
+と解釈できる。また、後述の書き換え
+$$
+\begin{aligned}
+ &(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\\
+ =& (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})
++\underbrace{ (\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}) }_{\beta\text{に依存しない！（$h$には依存）}}\\
+=& (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})
++(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta})
+\end{aligned}
+$$
+を用いると、
 $$
 \boxed{\begin{aligned}
 p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
--\frac{h}{2}\Big\{ &\underline{\nu}\underline{s}^{2}+SSE +(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})\\ &
-+\underbrace{ (\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}) }_{\beta\text{に依存しない！（$h$には依存）}}
-\Big\} \Bigg],
+-\frac{h}{2}\Big\{ &\underline{\nu}\underline{s}^{2}+ \hat{\nu}\hat{s}^2 +(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})\\ &
++(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta})
+\Big\} \Bigg],\\
+\text{or}\\
+p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
+-\frac{h}{2}\Big\{ &(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})+\bar{\nu} \bar{s}^2
+\Big\} \Bigg].
 \end{aligned}}
 $$
-$$ \begin{alignedat}{2}
-&\bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},&&\quad \text{(Koop 3.10)}\\
-&\bar{\beta} = \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}), &&\quad \text{(Koop 3.11)}\\
-&\bar{\nu} = \underline{\nu}+N &&\quad \text{(Koop 3.12)}
-\end{alignedat}$$
-
-★BEM p 110 nu, sのposterior
+$$
+\boxed{\therefore \beta, h | y \sim NG(\bar{\beta}, \bar{Q}, \bar{s}^{-2}, \bar{\nu})}
+$$
+$$
+\begin{alignedat}{2}
+\bar{Q} &= (\underline{Q}^{-1}+X'X)^{-1},&&\quad \text{(Koop 3.10)}\\
+\bar{\beta} &= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}), &&\quad \text{(Koop 3.11)}\\
+\bar{\nu} &= \underline{\nu}+N, &&\quad \text{(Koop 3.12)}\\
+\bar{\nu}\bar{s}^2 &= \underline{\nu}\underline{s}^2+\hat{\nu}\hat{s}^2+(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta}), &&\quad \text{(Koop 3.13)}\\
+\end{alignedat}
+$$
 
 ## $\beta$の条件つき事後分布
 
-$p(\beta,h|y)$に注目すると、$h$を定数項として考えた場合、$\beta$に依存するのは$\exp$内の第3項のみである。すなわち、
-$$p(\beta, h|y)\propto \exp \left[-\frac{1}{2}(\beta-\bar{\beta})'[h^{-1}\bar{Q}]^{-1}(\beta-\bar{\beta})\right].$$
+$p(\beta,h|y)$に注目すると、$h$を定数項として考えた場合、$\beta$に依存するのは$\exp \{\,\}$内の第1項のみである。すなわち、
+$$
+p(\beta, h|y)\propto \exp \left[-\frac{1}{2}(\beta-\bar{\beta})'[h^{-1}\bar{Q}]^{-1}(\beta-\bar{\beta})\right].
+$$
 これは、正規分布のカーネル。従って、
-$$\boxed{
+$$
+\boxed{
     \begin{aligned}\beta|h,y \sim N(\bar{\beta},h^{-1}\bar{Q}),\end{aligned}\\[1em]
     \left.\begin{aligned}\bar{Q} &= (\underline{Q}^{-1}+X'X)^{-1},\\
     \bar{\beta} &= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta})
     \end{aligned}\right\}
-\quad (\text{再掲})}$$
+\quad (\text{再掲})}
+$$
 
-Interpretation:
+**Interpretation**:
 - OLS推定量との対応関係は、$\bar{\beta} ⇔\underline{\beta}$、$(X'X)^{-1} ⇔\underline{Q}$.
 
-$$ \text{OLS:} \quad \text{Var}[b|X] = \sigma^2(X'X)^{-1} \tag{Greene 4-15}$$
+$$
+\text{OLS:} \quad \text{Var}[b|X] = \sigma^2(X'X)^{-1} \tag{Greene 4-15}
+$$
 
 - $\bar{\beta}$は、prior$\underline{\beta}$と最尤推定値$\hat{\beta}$の加重平均で決まる。ウエイトは、$\underline{Q}$（priorのばらつきの**逆数**;ばらついていると小さい）と$X'X$（データの情報量；大きいと大きい）。
 
 ## $h$の事後分布
 
 $h$の事後分布は、以下の通り、結合分布の$\beta$を周辺化することで与えられる。
-$$p(h|y) = \int p(\beta,h|y) d\beta$$
-
-再び$p(\beta,h|y)$に注目すると、$\beta$に依存するのは$\exp$内の第3項のみである。ここで、第3項以外をまとめて
-$$ \bar{\nu}\bar{s}^2 \equiv \underline{\nu}\underline{s}^{2}+SSE+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta})$$
-とすると、
-$$\begin{aligned}
+$$
+p(h|y) = \int p(\beta,h|y) d\beta
+$$
+ここで再び$p(\beta,h|y)$に注目すると、$\beta$に依存するのは$\exp$内の第1項のみである。従って、
+$$
+\begin{aligned}
 p(h|y) &\propto \int p(\beta,h|y) d\beta\\
 &=  h^{\frac{k+\underline{\nu}-2+N}{2}} \exp\left[-\frac{h}{2}\bar{\nu}\bar{s}^2\right] \int \exp \left[  -\frac{1}{2} (\beta-\bar{\beta})'h\bar{Q}^{-1}(\beta-\bar{\beta})\right]d\beta.
-\end{aligned}$$
+\end{aligned}
+$$
 
 Integral内は正規分布の密度関数を含むことから、
-$$ \int \exp \left[-\frac{1}{2} (\beta-\bar{\beta})'h\bar{Q}^{-1}(\beta-\bar{\beta})\right] d\beta=(2\pi)^{k/2}|h\bar{Q}^{-1}|^{-1/2}=(2\pi)^{k/2}h^{-k/2}|\bar{Q}^{-1}|^{-1/2}$$
+$$
+\int \exp \left[-\frac{1}{2} (\beta-\bar{\beta})'h\bar{Q}^{-1}(\beta-\bar{\beta})\right] d\beta=(2\pi)^{k/2}|h\bar{Q}^{-1}|^{-1/2}=(2\pi)^{k/2}h^{-k/2}|\bar{Q}^{-1}|^{-1/2}
+$$
 と解ける。従って、
 $$
 \begin{aligned}
@@ -254,10 +282,11 @@ p(h\mid y) &\propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\left[-\frac{h}{2}\bar{\nu}\
 \end{aligned}
 $$
 
-$$\beta, h|y \sim NG(\bar{\beta}, \bar{Q}, \bar{s},\bar{\nu}),$$
+$$
+\beta, h|y \sim NG(\bar{\beta}, \bar{Q}, \bar{s},\bar{\nu}),
+$$
 
 ```{r SET analytical posterior function, class.source='fold-hide'}
-
 calculate_bayesian_analytical_solution <- function(y, X, beta_prior, Q_prior, nu_prior, s2_prior) {
   n <- nrow(X)  # Number of observations
   XTX <- t(X) %*% X
@@ -665,44 +694,68 @@ ggplot(grid_df, aes(x = beta1, y = h, fill = posterior)) +
 
 ### Gibbs Sampling
 
-ここでは、条件付き事後分布のパラメータを$\{\tilde{\beta},\tilde{Q},\tilde{\nu},\tilde{s}\}$と書く。
+結合事後分布：
+
+$$
+\boxed{p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
+-\frac{h}{2}\Big\{ (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})+\bar{\nu} \bar{s}^2
+\Big\} \Bigg]\quad \text{（再掲）}}
+$$
+
+ここでは、条件付き事後分布のパラメータを$\{\dot{\beta},\dot{Q},\dot{\nu},\dot{s}\}$と書く。
+
 $\beta$の条件付き事後分布は、解析解で導出済み。すなわち、
 
 $$
-\boxed{\beta|h \sim N(\tilde{\beta},h^{-1}\tilde Q),}
+\boxed{\beta|h \sim N(\dot{\beta},h^{-1}\dot Q),}
 $$
 $$
 \text{where}\quad \begin{aligned}
-\tilde{Q} &= \bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},\\
-\tilde{\beta} &= \bar{\beta}= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}).
+\dot{Q} &= \bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},\\
+\dot{\beta} &= \bar{\beta}= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}).
 \end{aligned}
 $$
 
 一方、$h$については$\beta$を定数項として扱うことで、下記のパラメータに従うGamma分布として定義できる:
 
 $$
-\boxed{h|\beta \sim \gamma(\tilde{s}^{-2},\tilde{\nu}),}
+\boxed{h|\beta \sim \gamma(\dot{s}^{-2},\dot{\nu}),}
 $$
 
 $$
 \begin{aligned}
-\tilde{\nu}&=\underline{\nu}+N,\\[1em]
-\tilde{\nu}\tilde{s}^2 &= \underbrace{ \underline{\nu}\underline{s}^{2}+SSE+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }_{=\bar{\nu} \bar{s}^2}+(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta})\\
-&= \bar{\nu} \bar{s}^2+(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}).
+\dot{\nu}&=\underbrace{\bar{\nu}}_{\underline{\nu}+N}+k,\\
+\dot{\nu}\dot{s}^2 &= \underbrace{\bar{\nu}\bar{s}^2}_{ \underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }+({\beta}-\bar{\beta})'\bar{Q}^{-1}({\beta}-\bar{\beta}).
 \end{aligned}
 $$
 
-ここで、$\tilde{\nu}\tilde{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} \bar{s}^2$ に加え、$\beta$をintegrate out した場合と違うのは、
+$\dot{\nu}\dot{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} \bar{s}^2$ に$\beta$に依存する$({\beta}-\bar{\beta})'\bar{Q}^{-1}({\beta}-\bar{\beta})$を足したもの。
 
 ```{r REG Gibbs sampling, class.source='fold-hide'}
+# Notation (matching the notes)
+#   beta_bar = \bar{\beta}
+#   Q_bar    = \bar{Q} = (\underline{Q}^{-1} + X'X)^{-1}
+#   nu_bar   = \bar{\nu} = \underline{\nu} + N
+#   s2_bar   = \bar{s}^2
+#
+# Conditional posteriors:
+#   beta | h, y ~ N(beta_bar, h^{-1} Q_bar)
+#   h | beta, y ~ Gamma(shape = (nu_dot)/2, rate = (nu_dot * s2_dot)/2)
+# where
+#   nu_dot      = nu_bar + k
+#   nu_dot*s2_dot = nu_bar*s2_bar + (beta - beta_bar)' Q_bar^{-1} (beta - beta_bar)
 
-beta_tilde <- beta_post_analytical
-Q_tilde <- Q_post_analytical
-nu_tilde <- nu_post_analytical
-s2_tilde <- s2_post_analytical # Corresponds to bar_s^2 from analytical solution
+beta_bar <- beta_post_analytical
+Q_bar    <- Q_post_analytical
+nu_bar   <- nu_post_analytical
+s2_bar   <- s2_post_analytical
 
-h_init <- 1.0 # Initial value for h
+k <- nrow(beta_bar)  # number of coefficients (dimension of beta)
 
+Qbar_inv <- solve(Q_bar)
+
+# Gibbs setup
+h_init <- 1.0
 n_samples <- 1000
 
 sampled_betas <- vector("list", n_samples)
@@ -710,25 +763,26 @@ sampled_hs <- numeric(n_samples)
 
 current_h <- h_init
 
-# NOTE:
-# The original ipynb cell had `...` in the middle of the Gibbs loop.
-# Below is a standard Gibbs sampler for the Normal-Gamma conjugate posterior:
-#   beta | h, y ~ N(beta_tilde, (h Q_tilde)^{-1})
-#   h | beta, y ~ Gamma(shape=(nu_tilde + k)/2, rate=(nu_tilde*s2_tilde + (beta-beta_tilde)'Q_tilde^{-1}(beta-beta_tilde))/2)
-
-inv_Q_tilde <- solve(Q_tilde)
-
 for (s in seq_len(n_samples)) {
-  # draw beta | h
-  cov_beta <- solve(current_h * Q_tilde)
-  drawn_beta <- MASS::mvrnorm(n = 1, mu = as.numeric(beta_tilde), Sigma = cov_beta)
+
+  # 1) Draw beta | h, y  ~ N(beta_bar, h^{-1} Q_bar)
+  cov_beta <- solve(current_h * Qbar_inv)  # (h Q_bar^{-1})^{-1} = (h^{-1} Q_bar)
+  drawn_beta <- MASS::mvrnorm(n = 1, mu = as.numeric(beta_bar), Sigma = cov_beta)
   drawn_beta <- matrix(drawn_beta, ncol = 1)
   sampled_betas[[s]] <- drawn_beta
 
-  # draw h | beta
-  shape_h <- (nu_tilde + k) / 2
-  quadratic_form_h <- t(drawn_beta - beta_tilde) %*% inv_Q_tilde %*% (drawn_beta - beta_tilde)
-  rate_h <- (nu_tilde * s2_tilde + as.numeric(quadratic_form_h[1,1])) / 2
+  # 2) Draw h | beta, y
+  #    nu_dot = nu_bar + k
+  #    nu_dot*s2_dot = nu_bar*s2_bar + (beta-beta_bar)' Q_bar^{-1} (beta-beta_bar)
+  #    => rate = (nu_dot*s2_dot)/2 = (nu_bar*s2_bar + quad)/2
+  quad <- t(drawn_beta - beta_bar) %*% Qbar_inv %*% (drawn_beta - beta_bar)
+
+  nu_dot <- nu_bar + k
+  nu_dot_s2_dot <- nu_bar * s2_bar + as.numeric(quad[1, 1])
+  s2_dot <- nu_dot_s2_dot / nu_dot
+
+  shape_h <- nu_dot / 2
+  rate_h  <- nu_dot_s2_dot / 2  # = (nu_dot*s2_dot)/2
 
   current_h <- rgamma(1, shape = shape_h, rate = rate_h)
   sampled_hs[s] <- current_h
@@ -736,8 +790,10 @@ for (s in seq_len(n_samples)) {
 
 cat("First 5 sampled betas:\n"); print(sampled_betas[1:5])
 cat("\nLast 5 sampled betas:\n"); print(sampled_betas[(n_samples-4):n_samples])
+
 cat("\nFirst 5 sampled hs:\n"); print(sampled_hs[1:5])
 cat("\nLast 5 sampled hs:\n"); print(sampled_hs[(n_samples-4):n_samples])
+
 ```
 
 ```{r EDA Gibbs traceplots, class.source='fold-hide'}
@@ -761,8 +817,8 @@ legend("topright", legend = c("Sampled beta_1", "Analytical Posterior Mean beta_
 plot(iterations, sampled_hs, type = "l",
      main = "Gibbs Sampling for h (Precision)",
      xlab = "Iteration", ylab = "h")
-# analytical mean for h under Gamma posterior: E[h] = 1 / s2_tilde (same note as in ipynb)
-analytical_mean_h <- if (!isTRUE(all.equal(s2_tilde, 0))) 1.0 / s2_tilde else NA_real_
+# analytical mean for h under Gamma posterior: E[h] = 1 / s2_dot (same note as in ipynb)
+analytical_mean_h <- if (!isTRUE(all.equal(s2_dot, 0))) 1.0 / s2_dot else NA_real_
 abline(h = analytical_mean_h, lty = 2, col = "orange")
 grid()
 legend("topright", legend = c("Sampled h", "Analytical Posterior Mean h"),
