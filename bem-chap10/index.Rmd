@@ -521,9 +521,7 @@ prior($\beta, Q$)を固定したうえで、異なる$h$に条件づけて、$\b
 
 - hにconditionづければ、betaのposteriorも正規分布…"自然共役"
 
-## 解法
-
-### 解析解
+## 解析解
 
 ```{r REG analytical posterior, class.source='fold-hide'}
 
@@ -582,7 +580,7 @@ cat("\nAnalytical Posterior Scale for Sigma^2 (s2_posterior):", s2_post_analytic
 #        lty = c(2,3,4), col = c("red","green","blue"), bty = "n")
 ```
 
-### シミュレーション
+## シミュレーション
 
 ```{r PRE grid setup, class.source='fold-hide'}
 
@@ -692,7 +690,7 @@ ggplot(grid_df, aes(x = beta1, y = h, fill = posterior)) +
   theme_minimal()
 ```
 
-### Gibbs Sampling
+## Gibbs Sampling
 
 結合事後分布：
 
@@ -725,7 +723,7 @@ $$
 $$
 \begin{aligned}
 \dot{\nu}&=\underbrace{\bar{\nu}}_{\underline{\nu}+N}+k,\\
-\dot{\nu}\dot{s}^2 &= \underbrace{\bar{\nu}\bar{s}^2}_{ \underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }+({\beta}-\bar{\beta})'\bar{Q}^{-1}({\beta}-\bar{\beta}).
+\dot{\nu}\dot{s}^2 &= \underbrace{\bar{\nu}\bar{s}^2}_{ \underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }+({\beta}-\bar{\beta})'\dot{Q}^{-1}({\beta}-\bar{\beta}).
 \end{aligned}
 $$
 
@@ -736,133 +734,152 @@ $\dot{\nu}\dot{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} 
 - 初期化：
   $h^{(0)} > 0$ を与える（例：$h^{(0)}=1$）。以後 $s=1,...,S$ を反復。
 
-- Step 1（$β | h, y$ をドロー）：
-  $β^{(s)} \sim N( \dot\beta , (h^{(s-1)})^{-1} \dot Q )$
+- Step 1（$\beta | h, y$ をドロー）：
+  $\beta^{(s)} \sim N( \dot\beta , (h^{(s-1)})^{-1} \dot Q )$
+  
   （直前の $h^{(s-1)}$ を固定して多変量正規分布からサンプル。）
 
-- Step 2（$h | β, y$ をドロー）：
-  $h^{(s)} \sim γ( \dot s^{-2} , \dot \nu)$
-  ここで
-    $\dot \nu = \bar ν + k$,
-    $\dot \nu \dot s^2 = \bar{\nu} * \bar{s}^2 + (β^(s) - \bar{\beta})' * \bar{Q}^{-1} * (β^{(s)} - \bar{\beta})$.
-  （Step 1 の $β^{(s)}$ を固定して Gamma 分布からサンプル。）
+- Step 2（$h | \beta, y$ をドロー）：
+
+  $h^{(s)} \sim \gamma( \dot s^{-2} , \dot \nu)$, where $\dot \nu = \bar \nu + k$, $\dot \nu \dot s^2 = \bar{\nu} \bar{s}^2 + (\beta^{(s)} - \bar{\beta})'\dot{Q}^{-1}(\beta^{(s)} - \bar{\beta})$.
+  
+  （Step 1 の $\beta^{(s)}$ を固定して Gamma 分布からサンプル。）
 
 - 反復：
-  上の Step 1–2 を S 回繰り返すと、{(β^(s), h^(s))} は p(β,h|y) のサンプル列になる
+
+  上の Step 1–2 を $S$ 回繰り返すと、$\{(\beta^{(s)}, h^{(s)})\}$は $p(\beta,h|y)$ のサンプル列になる
   （バーンインは適宜捨てる）。
+  
+上でみたとおり、それぞれの条件付き分布のうち、**可変のパラメータは**$\beta$**の**$h^{(s)}$**と**$h$**の**$\dot{s}$**（**$\beta^{(s)}$**を通じて変動）のみ。それ以外のパラメータ**（$\dot{\beta}, \, \dot{Q}, \, \dot{\nu}$）**はループを通じて不変**。
+  
+**メモ**: $\gamma(\dot{s}^{-2} , \dot{\nu})$ と $\Gamma(\text{shape}, \text{rate})$ の対応（R の `rgamma` は shape-rate）
 
+BEM流に$h|\beta, y \sim \gamma( \dot s^{-2} , \dot \nu)$と書くとき、これは密度の核が
 
-[メモ] γ( s_dot^{-2} , ν_dot ) と Γ(shape, rate) の対応（R の rgamma は shape-rate）
+$$
+p(h|\beta,y) \propto h ^{{\dot{\nu}}/2-1} \exp \left[-\frac{\dot{\nu}\dot{s}^2}{2}\right], \quad h>0
+$$
 
-BEM流に
-  h | β, y ~ γ( s_dot^{-2} , ν_dot )
-と書くとき、これは密度の核が
-  p(h | β, y) ∝ h^{ν_dot/2 - 1} * exp( - (ν_dot * s_dot^2 / 2) * h ),   h>0
-という意味。
+したがって、Rの`rgamma`で書くと
+$$
+h \sim \Gamma\left(\text{shape}=\dot{\nu}/2, \,\text{rate}= \frac{\dot{\nu}\dot{s}^2}{2}\right)
+$$
 
-したがって、R の rgamma(shape=, rate=)（＝ Γ(shape, rate)）で書くと
-  h ~ Γ( shape = ν_dot/2 ,  rate = (ν_dot * s_dot^2)/2 ).
+* scaleを使う実装では rate = 1/scaleなので、$\text{scale} = 2 / (\dot{\nu}\dot{s}^2)$。
 
-※ scale を使う実装では rate = 1/scale なので
-  scale = 2 / (ν_dot * s_dot^2).
+#### 実装
 
+下記はGibbs samplerを実装する関数。
 
+```{r FUN Gibbs sampling refactor, class.source='fold-show'}
+# Gibbs sampler as a function (Normal–Gamma regression posterior)
+#   beta | h, y  ~ N(beta_bar, h^{-1} Q_bar)
+#   h | beta, y  ~ Gamma(shape = (nu_bar + k)/2,
+#                        rate  = (nu_bar*s2_bar + (beta-beta_bar)'Q_bar^{-1}(beta-beta_bar))/2)
 
+gibbs_ng <- function(beta_bar, Q_bar, nu_bar, s2_bar,
+                     h_init = 1.0, n_samples = 1000, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
 
-```{r REG Gibbs sampling, class.source='fold-hide'}
-# Notation (matching the notes)
-#   beta_bar = \bar{\beta}
-#   Q_bar    = \bar{Q} = (\underline{Q}^{-1} + X'X)^{-1}
-#   nu_bar   = \bar{\nu} = \underline{\nu} + N
-#   s2_bar   = \bar{s}^2
-#
-# Conditional posteriors:
-#   beta | h, y ~ N(beta_bar, h^{-1} Q_bar)
-#   h | beta, y ~ Gamma(shape = (nu_dot)/2, rate = (nu_dot * s2_dot)/2)
-# where
-#   nu_dot      = nu_bar + k
-#   nu_dot*s2_dot = nu_bar*s2_bar + (beta - beta_bar)' Q_bar^{-1} (beta - beta_bar)
+  k <- nrow(beta_bar)
+  Qbar_inv <- solve(Q_bar)
+  
+  # variables to store the results
+  beta1 <- numeric(n_samples)
+  h_draw <- numeric(n_samples)
+  
+  ### initial h ###
+  current_h <- h_init
+  
+  ### Gibbs iteration ###
+  for (s in seq_len(n_samples)) {
+    ### Step 1: draw beta | h, y ###
+    cov_beta <- Q_bar / current_h  # (h^{-1} Q_bar)
+    b <- MASS::mvrnorm(n = 1, mu = as.numeric(beta_bar), Sigma = cov_beta)
+    
+    # update b -> store beta1 (2nd element)
+    b <- matrix(b, ncol = 1)
+    beta1[s] <- b[2, 1]
 
-beta_bar <- beta_post_analytical
-Q_bar    <- Q_post_analytical
-nu_bar   <- nu_post_analytical
-s2_bar   <- s2_post_analytical
-
-k <- nrow(beta_bar)  # number of coefficients (dimension of beta)
-
-Qbar_inv <- solve(Q_bar)
-
-# Gibbs setup
-h_init <- 1.0
-n_samples <- 1000
-
-sampled_betas <- vector("list", n_samples)
-sampled_hs <- numeric(n_samples)
-
-current_h <- h_init
-
-for (s in seq_len(n_samples)) {
-
-  # 1) Draw beta | h, y  ~ N(beta_bar, h^{-1} Q_bar)
-  cov_beta <- solve(current_h * Qbar_inv)  # (h Q_bar^{-1})^{-1} = (h^{-1} Q_bar)
-  drawn_beta <- MASS::mvrnorm(n = 1, mu = as.numeric(beta_bar), Sigma = cov_beta)
-  drawn_beta <- matrix(drawn_beta, ncol = 1)
-  sampled_betas[[s]] <- drawn_beta
-
-  # 2) Draw h | beta, y
-  #    nu_dot = nu_bar + k
-  #    nu_dot*s2_dot = nu_bar*s2_bar + (beta-beta_bar)' Q_bar^{-1} (beta-beta_bar)
-  #    => rate = (nu_dot*s2_dot)/2 = (nu_bar*s2_bar + quad)/2
-  quad <- t(drawn_beta - beta_bar) %*% Qbar_inv %*% (drawn_beta - beta_bar)
-
-  nu_dot <- nu_bar + k
-  nu_dot_s2_dot <- nu_bar * s2_bar + as.numeric(quad[1, 1])
-  s2_dot <- nu_dot_s2_dot / nu_dot
-
-  shape_h <- nu_dot / 2
-  rate_h  <- nu_dot_s2_dot / 2  # = (nu_dot*s2_dot)/2
-
-  current_h <- rgamma(1, shape = shape_h, rate = rate_h)
-  sampled_hs[s] <- current_h
+    ### Step 2: draw h | beta, y  ###
+    quad <- as.numeric(t(b - beta_bar) %*% Qbar_inv %*% (b - beta_bar))  # scalar
+    shape_h <- (nu_bar + k) / 2
+    rate_h  <- (nu_bar * s2_bar + quad) / 2
+    
+    # update h -> store 
+    current_h <- rgamma(1, shape = shape_h, rate = rate_h)
+    h_draw[s] <- current_h
+  }
+  
+  # return
+  data.frame(
+    iter   = seq_len(n_samples),
+    beta1  = beta1,
+    h      = h_draw,
+    h_init = h_init
+  )
 }
-
-cat("First 5 sampled betas:\n"); print(sampled_betas[1:5])
-cat("\nLast 5 sampled betas:\n"); print(sampled_betas[(n_samples-4):n_samples])
-
-cat("\nFirst 5 sampled hs:\n"); print(sampled_hs[1:5])
-cat("\nLast 5 sampled hs:\n"); print(sampled_hs[(n_samples-4):n_samples])
-
 ```
 
-```{r EDA Gibbs traceplots, class.source='fold-hide'}
+$h^{(0)}=(1, 10000, 0.001)$の3パターンで実行。
 
-# Extract beta_1 values from sampled_betas
-beta1_samples <- vapply(sampled_betas, function(b) b[2,1], numeric(1))
-iterations <- seq_len(n_samples)
+ポイント：
 
-par(mfrow = c(1, 2))
+- どの初期値から始めても早々に収束
 
-# Plot for beta_1
-plot(iterations, beta1_samples, type = "l",
-     main = expression("Gibbs Sampling for " * beta[1]),
-     xlab = "Iteration", ylab = expression(beta[1]))
-abline(h = beta_post_analytical[2,1], lty = 2, col = "red")
-grid()
-legend("topright", legend = c("Sampled beta_1", "Analytical Posterior Mean beta_1"),
-       lty = c(1,2), col = c("black","red"), bty = "n")
+- $h$が小さい（分散が大きい）→$\beta^{(1)}$の分散が大きくなり、収束に数回要している
 
-# Plot for h
-plot(iterations, sampled_hs, type = "l",
-     main = "Gibbs Sampling for h (Precision)",
-     xlab = "Iteration", ylab = "h")
-# analytical mean for h under Gamma posterior: E[h] = 1 / s2_dot (same note as in ipynb)
-analytical_mean_h <- if (!isTRUE(all.equal(s2_dot, 0))) 1.0 / s2_dot else NA_real_
-abline(h = analytical_mean_h, lty = 2, col = "orange")
-grid()
-legend("topright", legend = c("Sampled h", "Analytical Posterior Mean h"),
-       lty = c(1,2), col = c("black","orange"), bty = "n")
+- $h$が大きい（分散が小さい）→posterior mean（$\bar \beta$）にかなり近い$\beta^{(1)}$のを引くため、すぐに収束
 
-par(mfrow = c(1, 1))
+
+```{r REG Gibbs sampling refactor, class.source='fold-show'}
+h_inits <- c(1, 10000, 0.001)
+
+trace_list <- lapply(h_inits, function(h0) {
+  gibbs_ng(
+    beta_bar = beta_post_analytical,
+    Q_bar    = Q_post_analytical,
+    nu_bar   = nu_post_analytical,
+    s2_bar   = s2_post_analytical,
+    h_init   = h0,
+    n_samples = 1000
+  )
+})
+
+trace_df <- do.call(rbind, trace_list)
+trace_df$h_init <- factor(trace_df$h_init, levels = as.character(h_inits))
+```
+
+```{r EXP Gibbs sampling refactor}
+# focus window (change if you want longer)
+trace_df_100 <- subset(trace_df, iter <= 50)
+
+# reference line for beta1 (analytical posterior mean)
+beta1_ref <- beta_post_analytical[2, 1]
+
+# Plot: beta1 trace (3 chains)
+p_beta <- ggplot(trace_df_100, aes(x = iter, y = beta1, color = h_init)) +
+  geom_line() +
+  geom_hline(yintercept = beta1_ref, linetype = 2) +
+  labs(
+    title = expression("Gibbs trace: " * beta[1] * " (first 50 iters)"),
+    x = "Iteration",
+    y = expression(beta[1]),
+    color = expression(h^{(0)})
+  )
+
+# Plot: h trace (3 chains)
+p_h <- ggplot(trace_df_100, aes(x = iter, y = h, color = h_init)) +
+  geom_line() +
+  labs(
+    title = "Gibbs trace: h (first 50 iters)",
+    x = "Iteration",
+    y = "h",
+    color = expression(h^{(0)})
+  )
+
+print(p_beta)
+print(p_h)
 ```
 
 # 数学補足
@@ -870,32 +887,43 @@ par(mfrow = c(1, 1))
 ## 1.
 
 一般的に、
-$$ \begin{aligned}
+$$
+\begin{aligned}
 &(\beta-\beta_1)'V_1(\beta-\beta_1)+(\beta-\beta_2)'V_2(\beta-\beta_2) \\[1em]
 =& \beta'V_1\beta - 2 \beta'V_1\beta_1+\beta_1'V_1\beta_1+\beta'V_2\beta - 2 \beta'V_2\beta_2+\beta_2'V_2\beta_2\\[1em]
 =& \beta'(\underbrace{ V_1+V_2 }_{\equiv \bar{V}})\beta -2 \beta'(\underbrace{ V_1\beta_1+V_2\beta_2 }_{\equiv b})+\underbrace{ \beta_1'V_1\beta_1+\beta_2'V_2\beta_2 }_{\equiv C}\\
 =&\beta' \bar{V} \beta-2\beta'b+C.
-\end{aligned} $$
+\end{aligned} 
+$$
 ここで、$b = \bar{V}\bar{\beta}$とおくと、
-$$ \begin{aligned}
+$$
+\begin{aligned}
 &\beta' \bar{V} \beta -2 \beta'\bar{V} \bar{\beta}+C\\[1em]
 =&(\beta-\bar{\beta})'\bar{V}(\beta-\bar{\beta})+C-\bar{\beta}'\bar{V}\bar{\beta}'
-\end{aligned} $$
+\end{aligned} 
+$$
 さらに、
-$$ \begin{aligned}
+$$
+\begin{aligned}
 &(\beta_1-\bar{\beta})'V_1(\beta_1-\bar{\beta})+(\beta_2-\bar{\beta})'V_2(\beta_2-\bar{\beta})\\[1em]
 =&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-2\bar{\beta}'(\underbrace{ V_1\beta_1+V_2\beta_2 }_{=b})+\bar{\beta}'(V_1+V_2)\bar{\beta}\\
 =&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-2\underbrace{ \bar{\beta}'\bar{V}\bar{\beta} }_{=\bar{\beta}'b}+\bar{\beta}'\bar{V}\bar{\beta}\\
 =&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-\bar{\beta}'\bar{V}\bar{\beta}\\[1em]
 =&C-\bar{\beta}'\bar{V}\bar{\beta}.
-\end{aligned} $$
+\end{aligned} 
+$$
 よって、
 
-$$(\beta-\beta_1)'V_1(\beta-\beta_1)+(\beta-\beta_2)'V_2(\beta-\beta_2)=(\beta-\bar{\beta})'\bar{V}(\beta-\bar{\beta})+(\beta_1-\bar{\beta})'V_1(\beta_1-\bar{\beta})+(\beta_2-\bar{\beta})'V_2(\beta_2-\bar{\beta}),$$
-$$ \begin{aligned}
+$$
+(\beta-\beta_1)'V_1(\beta-\beta_1)+(\beta-\beta_2)'V_2(\beta-\beta_2)=(\beta-\bar{\beta})'\bar{V}(\beta-\bar{\beta})+(\beta_1-\bar{\beta})'V_1(\beta_1-\bar{\beta})+(\beta_2-\bar{\beta})'V_2(\beta_2-\bar{\beta}),
+$$
+
+$$
+\begin{aligned}
 &\bar{V} = V_1+V_2,\\
 &\bar{\beta} = \bar{V}^{-1}(V_1\beta_1+V_2\beta_2)
-\end{aligned} $$
+\end{aligned} 
+$$
 
 ## 2. 尤度の計算（未）
 
