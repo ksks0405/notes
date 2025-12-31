@@ -1,0 +1,288 @@
+---
+title: "Carter & Kohn (1994) "
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: show
+---
+
+## 1. 目的（Kim et al. で何に使われているか）
+
+Kim et al. (1998) のSV推計では、近似（mixture-of-normals）により「**条件付きで線形ガウス状態空間**」になった潜在状態（例：$h_t$）を **まとめてサンプル**します。  
+その「まとめてサンプル」の中核が Carter and Kohn (1994) のアルゴリズム（Kalman filter + backward sampling）です。
+
+このノートでは、Carter & Kohn (1994) の記法に従い、
+
+- 線形状態空間モデルのもとで
+- $p(X \mid Y^n, K, \theta)$ から
+- 状態列 $X=\{x(1),\ldots,x(n)\}$ を **一括生成**する
+
+手順を、実装できる粒度で書きます。
+
+---
+
+## 2. モデルと記法（Carter & Kohn の表記）
+
+観測方程式：
+$$
+y(t) = h(t)'x(t) + e(t), \tag{1-1}
+$$
+状態遷移方程式：
+$$
+x(t+1) = F(t+1)x(t) + u(t+1). \tag{1-2}
+$$
+
+- $y(t)$：スカラー観測
+- $x(t)$：$m\times 1$ 状態ベクトル
+- $h(t)$：$m\times 1$（観測ロード）
+- $F(t+1)$：$m\times m$
+- $e(t)$ と $u(t)$：混合正規（indicator が与えられた条件付きでは正規）
+
+観測ベクトルと状態ベクトル：
+$$
+Y^n = \{y(1),\ldots,y(n)\}',\qquad
+X = \{x(1)',\ldots,x(n)'\}'.
+$$
+
+混合の indicator（論文ではまとめて $K$）：
+$$
+K=\{K(1),\ldots,K(n)\}.
+$$
+$K,\theta$ を与えると、$e(t),u(t)$ は独立ガウスになり、(1-1)(1-2) は通常のガウス状態空間モデルとして扱えます。
+
+## 3. Carter & Kohn の「状態列 $X$ を一括生成」アルゴリズム
+
+### 3.1 Lemma 2.1（後ろ向き分解）
+
+Carter & Kohn は、（$K,\theta$ を固定した上で）次の分解を用います：
+
+$$
+p(X\mid Y^n) = p(x(n)\mid Y^n)\ \prod_{t=1}^{n-1} p(x(t)\mid Y^t, x(t+1)).
+$$
+
+したがって
+
+1. $x(n) \sim p(x(n)\mid Y^n)$ をまず引く  
+2. 次に $t=n-1,\ldots,1$ の順で  
+   $$
+   x(t)\sim p(x(t)\mid Y^t, x(t+1))
+   $$
+   を引く
+
+ことで、$X$ 全体が生成できます。
+
+### 3.2 前向き：Kalman filter で $x(t\mid t)$ と $S(t\mid t)$ を保存
+
+Carter & Kohn の記法：
+$$
+x(t\mid j)=E\{x(t)\mid Y^j\},\qquad
+S(t\mid j)=\mathrm{var}\{x(t)\mid Y^j\}.
+$$
+
+実装では（通常の Kalman filter と同じく）各 $t$ で
+
+- 予測平均・分散（$t$ 時点の観測前）  
+  $$
+  x(t\mid t-1),\quad S(t\mid t-1)
+  $$
+- 更新後（$y(t)$ を見た後）  
+  $$
+  x(t\mid t),\quad S(t\mid t)
+  $$
+
+を計算し、**全時点分を保存**します。
+
+（注意）$K$ により $e(t)$ の分散や $u(t)$ の分散が時点ごとに切り替わる場合でも、各時点の観測分散 $R(t)$・遷移分散 $U(t)$ をその時点の値に置き換えるだけで同じです。
+
+### 3.3 後ろ向き：$p(x(t)\mid Y^t,x(t+1))$ の正規分布を作ってサンプル
+
+Carter & Kohn (Appendix 1) のアイデアは：
+
+$$
+x(t+1)=F(t+1)x(t)+u(t+1)
+$$
+を「$x(t)$ への追加観測」とみなして、Kalman の観測更新をもう一回かける（＝条件付き正規の公式を計算する）ことです。
+
+#### 3.3.1 実装に直結する一般式（多変量）
+
+前向きフィルタの結果として $x(t\mid t)$ と $S(t\mid t)$ を持っているとします。  
+状態方程式のノイズ分散を
+$$
+u(t+1)\sim N(0, U(t+1))
+$$
+と書くと、$x(t)\mid (Y^t, x(t+1))$ は正規で
+
+$$
+x(t)\mid (Y^t, x(t+1)) \sim N\big(\mu_t,\ \Omega_t\big),
+$$
+$$
+\mu_t = x(t\mid t) + B_t\left[x(t+1)-F(t+1)x(t\mid t)\right],
+$$
+$$
+\Omega_t = S(t\mid t) - B_t\,\Delta_t\,B_t',
+$$
+$$
+\Delta_t = F(t+1)\,S(t\mid t)\,F(t+1)' + U(t+1),
+\qquad
+B_t = S(t\mid t)\,F(t+1)'\,\Delta_t^{-1}.
+$$
+
+これを $t=n-1,\ldots,1$ に適用し、最後に
+
+$$
+x(n)\sim N\left(x(n\mid n),\ S(n\mid n)\right)
+$$
+からスタートすれば、状態列を一括生成できます。
+
+#### 3.3.2 Appendix 1 の補足（$U(t+1)$ が非対角の場合）
+
+Carter & Kohn は $U(t+1)$ を Cholesky 分解
+$$
+U(t+1)=L(t+1)A(t+1)L(t+1)'
+$$
+（$A$ 対角、$L$ 下三角・対角1）して、独立なスカラー更新を $m$ 回まわす形で書いています。  
+ただし上の「一般式」は $\Delta_t^{-1}$ を直接計算する形なので、実装上は **一般式をそのまま使う**のが最短です（数値安定性を上げたければ `chol()` を使って解きます）。
+
+## 4. Rで実装できる最小例（$n=4$ のスカラー状態）
+
+ここでは最小限の例として
+
+- $m=1$
+- 観測：$y(t)=x(t)+e(t)$
+- 状態：$x(t+1)=\phi x(t)+u(t+1)$
+
+を考えます。
+
+$$
+e(t)\sim N(0,\sigma_e^2),\qquad
+u(t)\sim N(0,\sigma_u^2).
+$$
+
+### 4.1 データ生成（fictitious）
+
+```{r}
+set.seed(123)
+
+n <- 4
+phi <- 0.7
+sigma_e <- 0.2
+sigma_u <- 0.1
+
+# 真の状態と観測を生成
+x_true <- numeric(n)
+y <- numeric(n)
+
+x_true[1] <- rnorm(1, mean = 0, sd = 1)  # 初期 x_1 ~ N(0,1)
+y[1] <- x_true[1] + rnorm(1, 0, sigma_e) # y_1 = x_1 + N(0, sigmae) 
+
+for(t in 2:n){
+  x_true[t] <- phi * x_true[t-1] + rnorm(1, 0, sigma_u) # transition
+  y[t] <- x_true[t] + rnorm(1, 0, sigma_e)              # observation
+}
+```
+
+## 5. Carter & Kohn の状態一括サンプラー（Kalman filter + backward sampling）
+
+以下は上の「一般式」をスカラーに落とした実装です（パッケージ無し、base Rのみ）。
+
+### 5.1 実装（関数）
+
+```{r}
+ck_draw_states_scalar <- function(y, phi, sigma_e, sigma_u, m1 = 0, C1 = 1){
+
+# y: length n
+
+n <- length(y)
+
+# 保存領域
+
+a <- numeric(n)  # a_t = x(t|t-1)
+R <- numeric(n)  # R_t = S(t|t-1)
+m <- numeric(n)  # m_t = x(t|t)
+C <- numeric(n)  # C_t = S(t|t)
+
+# ---- Forward: Kalman filter ----
+
+for(t in 1:n){
+if(t == 1){
+a[t] <- m1
+R[t] <- C1
+} else {
+a[t] <- phi * m[t-1]
+R[t] <- phi^2 * C[t-1] + sigma_u^2
+}
+
+# observation update: y_t = 1 * x_t + e_t
+Qy <- R[t] + sigma_e^2
+Kt <- R[t] / Qy
+m[t] <- a[t] + Kt * (y[t] - a[t])
+C[t] <- (1 - Kt) * R[t]
+
+}
+
+# ---- Backward: sample x(n),...,x(1) ----
+
+x_draw <- numeric(n)
+
+# x(n) ~ N(m_n, C_n)
+
+x_draw[n] <- rnorm(1, mean = m[n], sd = sqrt(C[n]))
+
+# for t=n-1,...,1:
+
+for(t in (n-1):1){
+# Delta_t = phi^2 * C_t + sigma_u^2 (since F=phi, U=sigma_u^2)
+Delta <- phi^2 * C[t] + sigma_u^2
+
+# B_t = C_t * phi / Delta
+B <- C[t] * phi / Delta
+
+# mean and var
+mean_t <- m[t] + B * (x_draw[t+1] - phi * m[t])
+var_t  <- C[t] - B^2 * Delta
+
+x_draw[t] <- rnorm(1, mean = mean_t, sd = sqrt(var_t))
+
+}
+
+list(x_draw = x_draw, filter = list(a=a, R=R, m=m, C=C))
+}
+
+```
+
+### 5.2 1回サンプルして確認
+
+```{r}
+out <- ck_draw_states_scalar(y, phi, sigma_e, sigma_u, m1 = 0, C1 = 1)
+out$x_draw
+x_true
+
+```
+
+### 5.3 複数ドロー（事後の雰囲気を見る）
+
+```{r}
+M <- 2000
+Xdraw <- matrix(NA_real_, nrow = M, ncol = n)
+
+for(j in 1:M){
+Xdraw[j,] <- ck_draw_states_scalar(y, phi, sigma_e, sigma_u, m1 = 0, C1 = 1)$x_draw
+}
+
+# 各時点の事後平均（モンテカルロ近似）
+
+colMeans(Xdraw)
+
+# 真値（fictitious）との比較
+
+x_true
+
+```
+
+## 6. Kim et al. の文脈への接続（最小限）
+
+Kim et al. の mixture representation では、indicator（混合割当）$K$ を与えると観測方程式がガウスになり、潜在状態（例えば $h_t$）は線形ガウス状態空間として扱えます。
+そのとき $p(h_{1:n}\mid \text{data},K,\theta)$ から $h_{1:n}$ を一括で引く部分が、ここで書いた Carter & Kohn の状態一括サンプラーそのものです。
+
+（このRmdでは indicator の離散フィルタ（Appendix 2）は扱っていません。Kim et al. のSV推計でまず必要になるのは「状態の一括生成」なので、そこに集中しました。）
