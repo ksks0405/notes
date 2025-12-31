@@ -274,7 +274,7 @@ $$
 \end{alignedat}
 $$
 
-観測：$y_1 = 0.5$ → フィルタリング（$y_
+観測：$y_1 = 0.5$ → フィルタリング（$y_1$）
 
 $$
 \begin{alignedat}{3}
@@ -283,7 +283,7 @@ $$
 \end{alignedat}
 $$
 
-```{r}
+```{r, eval = FALSE}
 # forward
 fwd <- ck_forward_filter_scalar_mixture(
   y = y,
@@ -300,7 +300,7 @@ fwd <- ck_forward_filter_scalar_mixture(
 
 
 
-```{r}
+```{r, eval = FALSE}
 # backward draw（1回）
 x_draw_1 <- ck_backward_sample_states_scalar(fwd)
 
@@ -317,7 +317,7 @@ data.frame(
 
 ## 6.3 複数ドローして（条件付き）事後平均の雰囲気を見る
 
-```{r}
+```{r, eval = FALSE}
 M <- 5000
 Xdraw <- matrix(NA_real_, nrow = M, ncol = n)
 
