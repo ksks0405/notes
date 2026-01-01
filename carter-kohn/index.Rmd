@@ -7,6 +7,52 @@ output:
     code_folding: show
 ---
 
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+-   This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+-   This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title = TRUE,
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = FALSE,
+  warning = FALSE,
+  class.source = 'fold-hide'
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+-   This chunk **loads the required packages** and **my functions**.
+
+```{r SET packages, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse" #must-have
+)
+easypackages::libraries(pkgList)
+rm(pkgList)
+```
+
+-   This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+
 # 1. セットアップ（Carter & Kohn の記法）
 
 Carter & Kohn (1994) の基本モデルは
@@ -287,7 +333,7 @@ $$
 \end{alignedat}
 $$
 
-```{r}
+```{r, eval = FALSE}
 # forward
 fwd <- ck_forward_filter_scalar_mixture(
   y = y,
@@ -307,7 +353,7 @@ tibble(t = c(1:4),
 
 
 
-```{r}
+```{r, eval = FALSE}
 # backward draw（1回）
 x_draw_1 <- ck_backward_sample_states_scalar(fwd)
 

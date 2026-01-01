@@ -4,9 +4,8 @@ date: "`r Sys.Date()`"
 output:
   html_document:
     toc: true
-    number_sections: FALSE
+    number_sections: true
     code_folding: show
-  pdf_document: default
 editor_options: 
   chunk_output_type: console
 ---
@@ -58,26 +57,15 @@ knitr::opts_hooks$set(label = function(options) {
 -   This chunk **loads the required packages** and **my functions**.
 
 ```{r SET libraries, class.source='fold-hide'}
-# pkgList <- c(
-#   "tidyverse", #must-have
-#   "vars", # for VAR
-#   "zoo", # table for VAR
-#   "modelsummary", # summary functions and reg. tables
-#   "quantmod" # FRED
-# )
-library(tidyverse)
-library(vars)
-library(zoo)
-library(modelsummary)
-library(quantmod)
-# easypackages::libraries(pkgList)
-# conflicted::conflict_prefer("lag", "dplyr")
-# conflicted::conflict_prefer("select", "dplyr")
-# conflicted::conflict_prefer("filter", "dplyr")
-# conflicted::conflict_prefer("complete", "dplyr")
-# rm(pkgList)
-
-# source("C:/Users/kotaro/Desktop/R/common/myfuns.R")
+pkgList <- c(
+  "tidyverse", #must-have
+  "vars", # for VAR
+  "zoo", # table for VAR
+  "modelsummary", # summary functions and reg. tables
+  "quantmod" # FRED
+)
+easypackages::libraries(pkgList)
+rm(pkgList)
 ```
 
 -   This chunk sets **the seed**.
