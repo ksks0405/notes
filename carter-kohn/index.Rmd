@@ -1,5 +1,5 @@
 ---
-title: "Carter & Kohn (1994) §2-2: Kalman filter + backward sampling（mixture normal 観測誤差）最小実装"
+title: "Carter & Kohn (1994)"
 output:
   html_document:
     toc: true
@@ -258,6 +258,10 @@ truth <- data.frame(
   Var_e = rep(R, n),
   Var_u = c(q_u, NA)     # Var(u4) unused
 )
+```
+
+
+```{r}
 truth
 ```
 
@@ -283,7 +287,7 @@ $$
 \end{alignedat}
 $$
 
-```{r, eval = FALSE}
+```{r}
 # forward
 fwd <- ck_forward_filter_scalar_mixture(
   y = y,
@@ -295,12 +299,15 @@ fwd <- ck_forward_filter_scalar_mixture(
   m1 = 0,
   C1 = 1
 )
+tibble(t = c(1:4),
+       y = y,
+       x = x, )
 ```
 
 
 
 
-```{r, eval = FALSE}
+```{r}
 # backward draw（1回）
 x_draw_1 <- ck_backward_sample_states_scalar(fwd)
 
