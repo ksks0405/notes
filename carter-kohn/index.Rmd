@@ -52,8 +52,7 @@ rm(pkgList)
 set.seed(1111)
 ```
 
-
-# 1. セットアップ（Carter & Kohn の記法）
+# セットアップ（Carter & Kohn の記法）
 
 Carter & Kohn (1994) の基本モデルは
 
@@ -74,7 +73,7 @@ $$
 
 ---
 
-# 2. §2-2 の要点：後ろ向き分解（Lemma 2-1）
+# §2-2 の要点：後ろ向き分解（Lemma 2-1）
 
 Lemma 2-1 は（$K,\theta$ を固定した条件付きの下で）
 
@@ -93,9 +92,7 @@ $$
 
 です。
 
----
-
-# 3. 最小モデル（スカラー状態）と mixture normal 観測誤差
+# 最小モデル（スカラー状態）と mixture normal 観測誤差
 
 ここでは最小限として $m=1$ とし、
 
@@ -166,102 +163,11 @@ $$
 x(t) \mid (Y^t,x(t+1))  \sim N \Big(m_t + B_t\{x(t+1)- \phi m_t\},\ C_t - B_t^2 \Delta_t \Big).
 $$
 
----
+# 数値例（n = 4）
 
-# 5. R 実装（前向き関数・後ろ向き関数を分離）
-
-## 5.1 前向き：Kalman filter（$K(t)$ による $R(t)$ の切替込み）
+## データ生成（fictitious data）
 
 ```{r}
-ck_forward_filter_scalar_mixture <- function(y, phi, sigma2, r2, C, K,
-                                             m1 = 0, C1 = 1) {
-  # y: length n
-  # K: length n, K(t) in {0,1}
-  n <- length(y)
-  stopifnot(length(K) == n)
-
-  # 観測分散 R(t)
-  R_t <- ifelse(K == 0, sigma2, C * sigma2)
-
-  # 保存
-  a  <- numeric(n)  # a_t = x(t|t-1)
-  P  <- numeric(n)  # P_t = S(t|t-1)
-  m  <- numeric(n)  # m_t = x(t|t)
-  Cc <- numeric(n)  # C_t = S(t|t)
-  Q  <- numeric(n)  # Q_t = P_t + R_t
-  Kg <- numeric(n)  # Kalman gain
-
-  for (t in 1:n) {
-    if (t == 1) {
-      a[t] <- m1
-      P[t] <- C1
-    } else {
-      a[t] <- phi * m[t - 1]
-      P[t] <- phi^2 * Cc[t - 1] + r2
-    }
-
-    Q[t]  <- P[t] + R_t[t]
-    Kg[t] <- P[t] / Q[t]
-    m[t]  <- a[t] + Kg[t] * (y[t] - a[t])
-    Cc[t] <- (1 - Kg[t]) * P[t]
-  }
-
-  list(
-    n = n,
-    y = y,
-    phi = phi,
-    sigma2 = sigma2,
-    r2 = r2,
-    C = C,
-    K = K,
-    R_t = R_t,
-    a = a, P = P, m = m, Cc = Cc, Q = Q, Kg = Kg,
-    m1 = m1, C1 = C1
-  )
-}
-```
-
-## 5.2 後ろ向き：状態列を一括生成（Lemma 2-1 の分解をそのまま）
-
-```{r}
-ck_backward_sample_states_scalar <- function(fwd) {
-  n   <- fwd$n
-  phi <- fwd$phi
-  r2  <- fwd$r2
-
-  m  <- fwd$m
-  Cc <- fwd$Cc
-
-  x_draw <- numeric(n)
-
-  # 1) x(n) ~ p(x(n) | Y^n) = N(m_n, C_n)
-  x_draw[n] <- rnorm(1, mean = m[n], sd = sqrt(Cc[n]))
-
-  # 2) for t = n-1,...,1: x(t) ~ p(x(t) | Y^t, x(t+1))
-  if (n >= 2) {
-    for (t in (n - 1):1) {
-      Delta <- phi^2 * Cc[t] + r2
-      B <- (Cc[t] * phi) / Delta
-
-      mean_t <- m[t] + B * (x_draw[t + 1] - phi * m[t])
-      var_t  <- Cc[t] - B^2 * Delta
-
-      x_draw[t] <- rnorm(1, mean = mean_t, sd = sqrt(var_t))
-    }
-  }
-
-  x_draw
-}
-```
-
----
-
-# 6. 簡単な数値例（n = 4）— 真の e(t), u(t), state を記録
-
-## 6.1 データ生成（fictitious data）
-
-```{r}
-# Fixed (non-random) dataset
 # Model: x_{t+1} = 0.7 x_t + u_t,  y_t = x_t + e_t
 # Var settings (model): Var(e_t)=1, Var(u_t)=1 or 4 depending on K
 
@@ -275,9 +181,6 @@ R <- 1
 q_small <- 1
 q_big   <- 4
 
-# Pattern A: K = (0,1,0,1)
-# Interpret K1,K2,K3 as for u1,u2,u3 => Var(u) = (1,4,1)
-# ----------------------------
 K <- c(0, 1, 0, 1)   # K4 is unused for n=4 (no x5), but kept for display
 q_u <- c(q_small, q_big, q_small)  # for u1,u2,u3
 
@@ -294,24 +197,13 @@ for(t in 1:(n-1)){
 }
 y <- x + e
 
-truth <- data.frame(
-  t = 1:n,
-  K = K,
-  x = x,
-  y = y,
-  e = e,
-  u = c(u, NA),          # align length to n for printing
-  Var_e = rep(R, n),
-  Var_u = c(q_u, NA)     # Var(u4) unused
-)
+truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e, 
+                    u = c(u, NA), Var_e = rep(R, n), Var_u = c(q_u, NA))
 ```
-
 
 ```{r}
 truth
 ```
-
----
 
 ## 6.2 K を条件づけて状態列を一括生成（1回）
 
@@ -333,6 +225,131 @@ $$
 \end{alignedat}
 $$
 
+**モデル再掲**
+
+Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
+
+$$
+\begin{alignedat}{2}
+y_t &= h\,x_t + e_t, && \qquad t=1,\ldots,n,\\
+x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1.
+\end{alignedat}
+$$
+である。ここで $y_t$ はスカラー観測、$x_t$ はスカラー状態、$h$ は既知（あるいはパラメータ）のスカラー係数、$e_t$ は観測誤差、 $F$ は既知（あるいはパラメータ）のスカラー係数、$u_t$ は状態方程式のイノベーションである。
+
+状態イノベーションは同分散（homoskedastic）な分散$\tau>0$を用いて下記のように表す。
+$$
+u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
+$$
+
+観測誤差は二成分の混合正規（mixture normal）であり、潜在 indicator $K_t\in\{0,1\}$、 基準分散 $\sigma>0$ 、 スケール $C>1$ により以下のように表す。
+$$
+e_t \mid K_t=0 \sim N(0,\sigma),\qquad
+e_t \mid K_t=1 \sim N(0,C\sigma), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
+
+$$
+
+$\{K_t\}$ は（少なくとも事前には）時点間独立であるとする。
+
+初期状態には便宜的に
+$$
+x_1 \sim N(a_1, s_1)
+$$
+を仮定する。ここで $a_1$ は初期平均、$s_1$ は初期分散である。
+
+さらに、条件付きでガウス状態空間になるように、$K=(K_1,\ldots,K_n)$ を与えたもとで
+$\{e_t\}$ と $\{u_t\}$ は互いに独立、かつそれぞれ時点間独立であると仮定する。
+
+% ---- 条件付き観測分散（given K） ----
+$K_t$ を与えると観測誤差分散は時点ごとに
+$$
+R_t := \mathrm{Var}(e_t\mid K_t)=
+\begin{cases}
+\sigma & (K_t=0),\\
+C\sigma & (K_t=1),
+\end{cases}
+$$
+と確定し、モデルは $(h,F,R_t,\tau)$ を持つ線形ガウス状態空間モデルとして扱える。
+
+予測量（forward filteringで使う記号）
+
+forward filtering では、予測分布
+$$
+x_t \mid y^{t-1} \sim N(a_t, s_t)
+$$
+を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。
+このとき予測された観測分布は
+$$
+y_t \mid y^{t-1} \sim N(b_t, v_t),
+$$
+ただし
+$$
+b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
+v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
+$$
+である。
+
+
+```{r}
+ck_forward_filter_scalar_mixture <- function(y, h, F, sigma, C, K, tau, a1, s1) {
+  # --- checks ---
+  y <- as.numeric(y)
+  n <- length(y)
+  if (length(K) != n) stop("K must have the same length as y (n).")
+  if (any(!K %in% c(0, 1))) stop("K must be a 0/1 vector.")
+  if (sigma <= 0) stop("sigma must be > 0 (variance).")
+  if (tau   <= 0) stop("tau must be > 0 (variance).")
+  if (C     <= 0) stop("C must be > 0.")
+  if (s1    <= 0) stop("s1 must be > 0 (variance).")
+
+  # conditional obs variances R_t = Var(e_t | K_t)
+  R_t <- ifelse(K == 0, sigma, C * sigma)
+
+  # allocate
+  a <- numeric(n)  # a_t = E[x_t | y^{t-1}]
+  s <- numeric(n)  # s_t = Var[x_t | y^{t-1}]
+  b <- numeric(n)  # b_t = E[y_t | y^{t-1}]
+  v <- numeric(n)  # v_t = Var[y_t | y^{t-1}]
+
+  # (needed for recursion) posterior moments after seeing y_t
+  a_upd <- numeric(n)  # a_t^{+} = E[x_t | y^{t}]
+  s_upd <- numeric(n)  # s_t^{+} = Var[x_t | y^{t}]
+
+  # Kalman gain
+  gain <- numeric(n)
+
+  # initial predictive for t=1
+  a[1] <- a1
+  s[1] <- s1
+
+  for (t in 1:n) {
+    # predicted observation
+    b[t] <- h * a[t]
+    v[t] <- (h^2) * s[t] + R_t[t]
+
+    # Kalman gain
+    gain[t] <- (s[t] * h) / v[t]
+
+    # update with y_t
+    a_upd[t] <- a[t] + gain[t] * (y[t] - b[t])
+    s_upd[t] <- s[t] - (gain[t]^2) * v[t]   # equivalent to (1 - gain[t]*h)*s[t]
+
+    # predict next state (if t < n)
+    if (t < n) {
+      a[t + 1] <- F * a_upd[t]
+      s[t + 1] <- (F^2) * s_upd[t] + tau
+    }
+  }
+
+  list(
+    n = n, y = y, h = h, F = F, sigma = sigma, C = C, K = K, tau = tau, 
+    a1 = a1, s1 = s1, R_t = R_t, a = a, s = s, b = b, v = v, 
+    a_upd = a_upd, s_upd = s_upd, gain = gain
+  )
+}
+```
+
+
 ```{r, eval = FALSE}
 # forward
 fwd <- ck_forward_filter_scalar_mixture(
@@ -348,6 +365,19 @@ fwd <- ck_forward_filter_scalar_mixture(
 tibble(t = c(1:4),
        y = y,
        x = x, )
+
+fwd1 <- ck_forward_filter_scalar_mixture(
+  y = y, h = phi, F = 1, sigma = 1, C = 2, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = 1)
+)
+fwd2 <- ck_forward_filter_scalar_mixture(
+  y = y, h = phi, F = 1, sigma = 1, C = 1, K = K, a1 = 0, s1 = 1, tau = 1)
+)
+fwd3 <- ck_forward_filter_scalar_mixture(
+  y = y, h = phi, F = 1, sigma = 1, C = 2, K = K, a1 = 0, s1 = 1, tau = 1)
+)
+fwd1$a_upd
+fwd2$a_upd
+fwd3$a_upd
 ```
 
 

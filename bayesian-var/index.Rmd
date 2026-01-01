@@ -66,6 +66,14 @@ pkgList <- c(
   "pgmm"
 )
 
+pkgList <- c(
+  "tidyverse", #must-have
+  "vars", # for VAR
+  "zoo", # table for VAR
+  "modelsummary", # summary functions and reg. tables
+  "quantmod" # FRED
+)
+
 easypackages::libraries(pkgList)
 
 rm(pkgList)
