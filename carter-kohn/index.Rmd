@@ -92,78 +92,7 @@ $$
 
 です。
 
-# 最小モデル（スカラー状態）と mixture normal 観測誤差
-
-ここでは最小限として $m=1$ とし、
-
-$$
-y(t)=x(t)+e(t), \quad (h(t)=1)
-$$
-
-$$
-x(t+1)=\phi x(t)+u(t+1),\quad (F(t+1)=\phi)
-$$
-
-$$
-u(t) \sim N(0,r^2).
-$$
-
-観測誤差はユーザー指定の 2成分 mixture normal：
-
-- 確率 $p_1$ で $e(t) \sim N(0, \sigma^2)$
-- 確率 $1-p_1$ で $e(t) \sim N(0,C \sigma^2)$（$C>1$）
-
-indicator を
-- $K(t)=0$ なら $\mathrm{Var}(e(t))= \sigma^2$
-- $K(t)=1$ なら $\mathrm{Var}(e(t))=C \sigma^2$
-
-とします。
-
-このとき $K$ を条件づけると、観測分散は時点ごとに
-$$
-R(t)=
-\begin{cases}
- \sigma^2 & (K(t)=0)\\
-C \sigma^2 & (K(t)=1)
-\end{cases}
-$$
-に切り替わるだけで、Kalman filter / backward sampling は同じ形です。
-
----
-
-# 4. 実装用の数式（スカラー版）
-
-## 4.1 前向き（Kalman filter）
-
-- 予測（$t\ge 2$）：
-$$
-a_t =  \phi m_{t-1},\quad
-P_t =  \phi^2 C_{t-1}+r^2
-$$
-
-- 観測更新：
-$$
-Q_t = P_t + R(t),\quad
-K_t = P_t/Q_t
-$$
-$$
-m_t = a_t + K_t\{y(t)-a_t\},\quad
-C_t = (1-K_t)P_t
-$$
-
-初期は $x(1) \sim N(m_1,C_1)$（proper）を置きます。
-
-## 4.2 後ろ向き：$p(x(t) \mid Y^t,x(t+1))$
-
-$$
- \Delta_t =  \phi^2 C_t + r^2,\quad
-B_t =  \frac{C_t \phi}{ \Delta_t}
-$$
-$$
-x(t) \mid (Y^t,x(t+1))  \sim N \Big(m_t + B_t\{x(t+1)- \phi m_t\},\ C_t - B_t^2 \Delta_t \Big).
-$$
-
-# 数値例（n = 4）
+# 数値例
 
 ## データ生成（fictitious data）
 
@@ -172,17 +101,16 @@ $$
 # Var settings (model): Var(e_t)=1, Var(u_t)=1 or 4 depending on K
 
 n <- 4
-phi <- 0.7
+h <- 0.7
 
 # Observation error variance (model setting)
 R <- 1
+C <- 4
+K <- c(0, 1, 0, 1)
+R_t <- ifelse(K == 0, R, C * R)
 
 # State innovation variances (model setting)
-q_small <- 1
-q_big   <- 4
-
-K <- c(0, 1, 0, 1)   # K4 is unused for n=4 (no x5), but kept for display
-q_u <- c(q_small, q_big, q_small)  # for u1,u2,u3
+tau <- 1
 
 # Fixed shocks
 x1 <- 0
@@ -193,39 +121,19 @@ e  <- c(0.5, -0.5, 1, -1)          # e1..e4 (fixed)
 x <- numeric(n)
 x[1] <- x1
 for(t in 1:(n-1)){
-  x[t+1] <- phi * x[t] + u[t]
+  x[t+1] <- h * x[t] + u[t]
 }
 y <- x + e
 
 truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e, 
-                    u = c(u, NA), Var_e = rep(R, n), Var_u = c(q_u, NA))
+                    u = c(u, NA), Var_e = rep(tau, n), Var_u = R_t)
 ```
 
 ```{r}
 truth
 ```
 
-## 6.2 K を条件づけて状態列を一括生成（1回）
-
-初期分布（$x_1$）と予測分布（$y_1|x_1$）：
-
-$$
-\begin{alignedat}{3}
-&x_1 \sim N(0,1) && \quad\Rightarrow\quad m_{1|0}=0,\;P_{1|0}=1. \\
-&y_1 = x_1 + e_1,\; e_1\sim N(0,1) && \quad\Rightarrow\quad y_1|Y^0 \sim N(m_{1|0},\,P_{1|0}+1)=N(0,2).
-\end{alignedat}
-$$
-
-観測：$y_1 = 0.5$ → フィルタリング（$y_1$）
-
-$$
-\begin{alignedat}{3}
-& Q_1 = P_{1|0}+1 = 2, && \qquad G_1 = \frac{P_{1|0}}{Q_1}=\frac{1}{2}.\\
-& m_{1|1} = m_{1|0}+G_1(y_1-m_{1|0})=\frac{1}{2}y_1, && \qquad P_{1|1}=(1-G_1)P_{1|0}=\frac{1}{2}.
-\end{alignedat}
-$$
-
-**モデル再掲**
+## Kを条件づけて状態列を一括生成
 
 Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
 
@@ -242,11 +150,10 @@ $$
 u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
 $$
 
-観測誤差は二成分の混合正規（mixture normal）であり、潜在 indicator $K_t\in\{0,1\}$、 基準分散 $\sigma>0$ 、 スケール $C>1$ により以下のように表す。
+観測誤差は二成分の混合正規（mixture normal）であり、潜在 indicator $K_t\in\{0,1\}$、 基準分散 $R>0$ 、 スケール $C>1$ により以下のように表す。
 $$
-e_t \mid K_t=0 \sim N(0,\sigma),\qquad
-e_t \mid K_t=1 \sim N(0,C\sigma), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
-
+e_t \mid K_t=0 \sim N(0,R),\qquad
+e_t \mid K_t=1 \sim N(0,CR), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
 $$
 
 $\{K_t\}$ は（少なくとも事前には）時点間独立であるとする。
@@ -265,8 +172,8 @@ $K_t$ を与えると観測誤差分散は時点ごとに
 $$
 R_t := \mathrm{Var}(e_t\mid K_t)=
 \begin{cases}
-\sigma & (K_t=0),\\
-C\sigma & (K_t=1),
+R & (K_t=0),\\
+CR & (K_t=1),
 \end{cases}
 $$
 と確定し、モデルは $(h,F,R_t,\tau)$ を持つ線形ガウス状態空間モデルとして扱える。
@@ -290,28 +197,28 @@ $$
 である。
 
 
-```{r}
-ck_forward_filter_scalar_mixture <- function(y, h, F, sigma, C, K, tau, a1, s1) {
+```{r FUN forward}
+ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
   # --- checks ---
   y <- as.numeric(y)
   n <- length(y)
   if (length(K) != n) stop("K must have the same length as y (n).")
   if (any(!K %in% c(0, 1))) stop("K must be a 0/1 vector.")
-  if (sigma <= 0) stop("sigma must be > 0 (variance).")
+  if (R <= 0) stop("R must be > 0 (variance).")
   if (tau   <= 0) stop("tau must be > 0 (variance).")
   if (C     <= 0) stop("C must be > 0.")
   if (s1    <= 0) stop("s1 must be > 0 (variance).")
 
   # conditional obs variances R_t = Var(e_t | K_t)
-  R_t <- ifelse(K == 0, sigma, C * sigma)
+  R_t <- ifelse(K == 0, R, C * R)
 
-  # allocate
+  # prior moments BEFORE seeing y_t
   a <- numeric(n)  # a_t = E[x_t | y^{t-1}]
   s <- numeric(n)  # s_t = Var[x_t | y^{t-1}]
   b <- numeric(n)  # b_t = E[y_t | y^{t-1}]
   v <- numeric(n)  # v_t = Var[y_t | y^{t-1}]
 
-  # (needed for recursion) posterior moments after seeing y_t
+  # posterior moments AFTER seeing y_t
   a_upd <- numeric(n)  # a_t^{+} = E[x_t | y^{t}]
   s_upd <- numeric(n)  # s_t^{+} = Var[x_t | y^{t}]
 
@@ -342,7 +249,7 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, sigma, C, K, tau, a1, s1) 
   }
 
   list(
-    n = n, y = y, h = h, F = F, sigma = sigma, C = C, K = K, tau = tau, 
+    n = n, y = y, h = h, F = F, R = R, C = C, K = K, tau = tau, 
     a1 = a1, s1 = s1, R_t = R_t, a = a, s = s, b = b, v = v, 
     a_upd = a_upd, s_upd = s_upd, gain = gain
   )
@@ -350,37 +257,19 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, sigma, C, K, tau, a1, s1) 
 ```
 
 
-```{r, eval = FALSE}
+```{r}
 # forward
-fwd <- ck_forward_filter_scalar_mixture(
-  y = y,
-  phi = phi,
-  sigma2 = sigma2,
-  r2 = r2,
-  C = C_big,
-  K = K_true,
-  m1 = 0,
-  C1 = 1
-)
-tibble(t = c(1:4),
-       y = y,
-       x = x, )
-
 fwd1 <- ck_forward_filter_scalar_mixture(
-  y = y, h = phi, F = 1, sigma = 1, C = 2, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = 1)
-)
+  y = y, h = h, F = 1, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
 fwd2 <- ck_forward_filter_scalar_mixture(
-  y = y, h = phi, F = 1, sigma = 1, C = 1, K = K, a1 = 0, s1 = 1, tau = 1)
-)
-fwd3 <- ck_forward_filter_scalar_mixture(
-  y = y, h = phi, F = 1, sigma = 1, C = 2, K = K, a1 = 0, s1 = 1, tau = 1)
-)
+  y = y, h = h, F = 1, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
 fwd1$a_upd
 fwd2$a_upd
-fwd3$a_upd
+(h)/((h)^2+R)
+(h)/((h)^2+R*C)
+fwd1$gain[1]
+fwd2$gain[1]
 ```
-
-
 
 
 ```{r, eval = FALSE}
