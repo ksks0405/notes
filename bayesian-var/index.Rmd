@@ -45,8 +45,7 @@ knitr::opts_chunk$set(
   results = "hold",
   fig.show = "hold",
   message = F, # when hiding messages
-  warning = F,  # when hiding errors
-  class.source = 'fold-hide'
+  warning = F  # when hiding errors
 )
 knitr::opts_hooks$set(label = function(options) {
   options$before = paste0('<div>Chunk: ', options$label, '</div>')
@@ -59,13 +58,27 @@ knitr::opts_hooks$set(label = function(options) {
 ```{r SET libraries, class.source='fold-hide'}
 pkgList <- c(
   "tidyverse", #must-have
-  "vars", # for VAR
-  "zoo", # table for VAR
-  "modelsummary", # summary functions and reg. tables
-  "quantmod" # FRED
+  "ggplots", # read xlsx
+  "plm",
+  "modelsummary",
+  "gridExtra",
+  "plm",
+  "pgmm"
 )
+
 easypackages::libraries(pkgList)
+
 rm(pkgList)
+
+# pkgList <- c(
+#   "tidyverse", #must-have
+#   "vars", # for VAR
+#   "zoo", # table for VAR
+#   "modelsummary", # summary functions and reg. tables
+#   "quantmod" # FRED
+# )
+# easypackages::libraries(pkgList)
+# rm(pkgList)
 ```
 
 -   This chunk sets **the seed**.
