@@ -92,7 +92,7 @@ $$
 
 ## データ生成（fictitious data）
 
-```{r}
+```{r IMP dataset}
 # Model: x_{t+1} = 0.7 x_t + u_t,  y_t = x_t + e_t
 # Var settings (model): Var(e_t)=1, Var(u_t)=1 or 4 depending on K
 
@@ -125,11 +125,11 @@ truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e,
                     u = c(u, NA), Var_e = rep(tau, n), Var_u = R_t)
 ```
 
-```{r}
+```{r EXP dataset}
 truth
 ```
 
-## Kを条件づけて状態列を一括生成
+## 流れ：Kを条件づけて状態列を一括生成
 
 Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
 
@@ -163,7 +163,6 @@ $$
 さらに、条件付きでガウス状態空間になるように、$K=(K_1,\ldots,K_n)$ を与えたもとで
 $\{e_t\}$ と $\{u_t\}$ は互いに独立、かつそれぞれ時点間独立であると仮定する。
 
-% ---- 条件付き観測分散（given K） ----
 $K_t$ を与えると観測誤差分散は時点ごとに
 $$
 R_t := \mathrm{Var}(e_t\mid K_t)=
@@ -192,8 +191,63 @@ v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
 $$
 である。
 
+### Forward filtering
 
-```{r FUN forward}
+$x_1$の予測分布は、
+$$ 
+\begin{aligned}
+x_1|y^0 &\sim N(a_1, s_1), \,\text{where}\\
+a_1 &= E[x_1|Y^0]\\
+s_1 &= E[(x_1-a_1)^2|Y^0]
+\end{aligned}
+$$
+
+$y_1$の予測分布は、$y_t = hx_t + e_t,\ (e_t \sim \text{mixture})$より、
+
+$$
+\begin{aligned}
+y_1|y^0 &\sim N(b_1, v_1), \, \text{where}\\
+b_1 &= hE[x_1|Y^0] = ha_1,\\
+v_1 &= E[(y_1-b_1)^2|Y^0] = E[\{h(x_1-a_1)\}^2|Y^0] =h^2s_1+R_1
+\end{aligned}
+$$
+
+実現値との回帰
+
+$$
+\boxed{\underbrace{ x_1-E[x_1|y^0] }_{x_1 \text{の予測分布からの乖離をアップデート}}=L_1\underbrace{ (y_1-E[y_1|y^0]) }_{y_1 \text{の実現値からの乖離を基に}} + \eta_1 }
+$$
+の両辺に$(y_1-b_1)$をかけ期待値を取ると、
+
+$$ 
+\begin{alignedat}{2}
+&E\Big[\underbrace{ (x_1-\underbrace{ E[x_1|y^0] }_{=a_1})(y_1-\underbrace{ E[y_1|y^0] }_{=b_1 = h a_1}) }_{h(x_1-a_1)(x_1-a_1+e_1)}\Big] &&= L_1E\Big[(y_1-E[y_1|y^0])^2\Big]\\
+\Rightarrow & \qquad h \,\text{var}[x_1|y^0] &&= L_1  \, \text{var}[y_1|y^0]\\
+\Rightarrow & \qquad hs_1 &&= L_1 (h^2s_1+R_1)
+\end{alignedat}
+$$
+$$
+\therefore L_1 =  \frac{hs_1}{h^2s_1+R_1}
+$$
+
+数値例に当てはめると、
+
+$$
+L_1 = \begin{cases}
+\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
+\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
+\end{cases}
+$$
+
+$$
+a_1^+ := \underbrace{ E[{x}_1|y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|y^0])}_{y_1-ha_1} = \begin{cases}
+0 + 0.470 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
+0 + 0.156 \times (0.5-0) = 0.078 \quad (\text{high volatility})
+\end{cases}
+$$
+
+
+```{r FUN ff}
 ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
   # --- checks ---
   y <- as.numeric(y)
@@ -252,59 +306,11 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
 }
 ```
 
-$x_1$の事前予測は、
-$$ 
-\begin{aligned}
-x_1 &\sim N(a_1, s_1), \,\text{where}\\
-a_1 &= E[x_1|Y^0]\\
-s_1 &= E[(x_1-\hat{x}_1)^2|Y^0]
-\end{aligned}
-$$
+手計算
 
-$y_1$の事前予測は、$y_t = hx_t + e_t,\ (e_t \sim \text{mixture})$より、
-
-$$
-\begin{aligned}
-y_1 &\sim N(b_1, v_1), \, \text{where}\\
-b_1 &= hE[x_1|Y^0] = ha_1,\\
-v_1 &= E[(y_1-\hat{y}_1)^2|Y^0] = E[\{h(x-\hat{x}_1)\}^2|Y^0] =h^2s_1+R_1
-\end{aligned}
-$$
-
-実現値との回帰
-
-$$
-\boxed{x_1-\hat{x}_1=L_1(y_1-\hat{y}_1) + \eta_1 }
-$$
-の両辺に$(y_1-\hat{y}_1)$をかけ期待値を取ると、
-
-$$ 
-\begin{aligned}
-\mathbb{E}[\underbrace{ (x_1-\hat{x}_1)(y_1-\hat{y}_1) }_{h(x_1-\hat{x}_1)(x_1-\hat{x}_1+e_t)}]&=L_1\mathbb{E}[(y_1-\hat{y}_1)^2]\\
-\Rightarrow hs_1 &= L_1 (h^2s_1+R_1)
-\end{aligned}
-$$
-$$
-\therefore L_1 =  \frac{hs_1}{h^2s_1+R_1}
-$$
-
-数値例に当てはめると、
-
-$$
-L_1 = \begin{cases}
-\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
-\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
-\end{cases}
-$$
-
-$$
-a_1^+ := \underbrace{ \hat{x}_1 }_{a_1}+L_1\underbrace{(y_1-\hat{y}_1)}_{y_1-ha_1} = \begin{cases}
-0 + 0.235 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
-0 + 0.235 \times (0.5-0) = 0.078 \quad (\text{high volatility})
-\end{cases}
-$$
-
-```{r}
+```{r REG ff function vs handroll}
+fwd <- ck_forward_filter_scalar_mixture(
+  y = y, h = h, F = 1, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
 fwd1 <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
 fwd2 <- ck_forward_filter_scalar_mixture(
@@ -313,7 +319,7 @@ fwd2 <- ck_forward_filter_scalar_mixture(
 0+(h)/((h)^2+R*C)*(y[1]-0)
 ```
 
-```{r}
+```{r EXP ff plot}
 # --- 1) プロット用データを作る（prior / posterior） ---
 mk_df <- function(fwd, case_label) {
   tibble(
@@ -371,44 +377,259 @@ ggplot() +
 
 ```
 
+### Backward smoothing / sampling
 
-```{r, eval = FALSE}
-# backward draw（1回）
-x_draw_1 <- ck_backward_sample_states_scalar(fwd)
+$x_T$の事後予測（$x_T|y^T \sim N(a_T^+, s_T^+) $) は、**forward filteringの最終ステップ**から直ちに得られる。
 
-data.frame(
-  t = 1:n,
-  x_true = x_true,
-  x_draw = x_draw_1,
-  y = y,
-  K_true = K_true
-)
-```
+**Backward smoothing**では、$x_{T-1}$のフィルタリング分布（$x_{T-1}|y_{T-1}$）を、$x_T|y_{T-1}$と$x_T$の差（すなわち$T-1$期時点の予測分布からの乖離＝$T$時点の情報を反映）に回帰することで、未来の情報を遡って取り込んでいく：
 
-## 6.3 複数ドローして（条件付き）事後平均の雰囲気を見る
+$$
+\boxed{ \underbrace{x_{T-1}-E[x_{T-1}|y^{T-1}] }_{x_{T-1}\text{のフィルタ分布からの乖離をアップデート}} =  J_{t-1}\underbrace{(x_T- E[x_T|y^{T-1}]) }_{x_T\text{の予測分布からの乖離を基に}}+\xi_t}
+$$
 
-```{r, eval = FALSE}
-M <- 5000
-Xdraw <- matrix(NA_real_, nrow = M, ncol = n)
+両辺に$(x_T-E[x_T|y^{T-1}])$をかけ期待値を取ると、
+$$
+\begin{aligned}
+E\Big[\underbrace{ (x_{T-1}-\underbrace{ E[x_{T-1}|y^{T-1} }_{=a_{T-1}^+}])(x_T-\underbrace{ E[x_T|y^{T-1}] }_{Fa_{T-1}^+}) }_{F(x_{T-1}-a_{T-1}^+)(x_{T-1}-a_{T-1}^+ + u_{T-1})}\Big] &=  J_{t-1}E\Big[(x_T-E[x_T|y^{T-1}])^2\Big]\\
+\Rightarrow F \,\text{var}[x_{T-1}|y^{T-1}] &=J_{t-1} \text{var}[x_T|y^{{T-1}}]\\
+\Rightarrow J_{t-1}  &= \frac{F s_{T-1}^+}{F^2s_{T-1}^+ + \tau}\\
+\end{aligned}
+$$
 
-for (j in 1:M) {
-  Xdraw[j, ] <- ck_backward_sample_states_scalar(fwd)
+$$
+\therefore J_{t-1}  = \frac{F s_{T-1}^+}{F^2s_{T-1}^+ + \tau} 
+$$
+
+**注意点：SamplingとSmoothingの違い**
+
+- Samplingは、$x_T$（サンプル値）を使う
+
+- Smoothingは、$\tilde{a}_T = E[x_T|y^T]$を使う
+
+#### Backward sampling 実装 
+
+```{r FUN backward smoothing}
+ck_backward_smoother_scalar <- function(fwd) {
+  # fwd: output of ck_forward_filter_scalar_mixture()
+  n   <- fwd$n
+  F   <- fwd$F
+  tau <- fwd$tau
+
+  a_filt <- fwd$a_upd   # a_t^+ = E[x_t | y^t]
+  s_filt <- fwd$s_upd   # s_t^+ = Var[x_t | y^t]
+
+  # One-step-ahead predictions from filtered moments:
+  # a_{t+1|t} = F a_t^+
+  # s_{t+1|t} = F^2 s_t^+ + tau
+  a_pred_next <- rep(NA_real_, n)
+  s_pred_next <- rep(NA_real_, n)
+  for (t in 1:(n - 1)) {
+    a_pred_next[t] <- F * a_filt[t]
+    s_pred_next[t] <- (F^2) * s_filt[t] + tau
+  }
+
+  # RTS smoothing gain J_t
+  J <- rep(NA_real_, n)
+  for (t in 1:(n - 1)) {
+    J[t] <- (s_filt[t] * F) / s_pred_next[t]
+  }
+
+  # Smoothed moments
+  a_smooth <- rep(NA_real_, n)  # E[x_t | y^n]
+  s_smooth <- rep(NA_real_, n)  # Var[x_t | y^n]
+
+  # Initialize at terminal time: smoothing = filtering
+  a_smooth[n] <- a_filt[n]
+  s_smooth[n] <- s_filt[n]
+
+  # Backward recursion
+  if (n >= 2) {
+    for (t in (n - 1):1) {
+      a_smooth[t] <- a_filt[t] + J[t] * (a_smooth[t + 1] - a_pred_next[t])
+      s_smooth[t] <- s_filt[t] + (J[t]^2) * (s_smooth[t + 1] - s_pred_next[t])
+      s_smooth[t] <- max(s_smooth[t], 0)  # numerical safety
+    }
+  }
+
+  list(
+    n = n,
+    a_smooth = a_smooth,
+    s_smooth = s_smooth,
+    J = J,
+    a_filt = a_filt,
+    s_filt = s_filt,
+    a_pred_next = a_pred_next,
+    s_pred_next = s_pred_next
+  )
 }
 
-post_mean <- colMeans(Xdraw)
-post_sd <- apply(Xdraw, 2, sd)
-
-data.frame(
-  t = 1:n,
-  x_true = x_true,
-  post_mean = post_mean,
-  post_sd = post_sd,
-  y = y,
-  K_true = K_true
-)
 ```
 
-# 7. 注意（Gibbs 全体にするには）
+```{r}
+sm1 <- ck_backward_smoother_scalar(fwd1)
+sm2 <- ck_backward_smoother_scalar(fwd2)
+
+# --- 4) backward smoother の点予測（E[x_t|y^T]）を df に ---
+mk_sm_df <- function(sm, case_label) {
+  tibble(
+    t = 1:sm$n,
+    case = case_label,
+    smooth = sm$a_smooth   # E[x_t | y^T]
+  )
+}
+
+df_sm <- bind_rows(
+  mk_sm_df(sm1, "K=(0,0,0,0)"),
+  mk_sm_df(sm2, "K=(1,1,1,1)")
+)
+
+# --- 5) 既存プロットに追加（caseで色は合わせ、線種だけ別にする） ---
+ggplot() +
+  # 観測値：×（線なし）
+  geom_point(
+    data = df_obs,
+    aes(x = t, y = y),
+    shape = 4, size = 3, stroke = 1
+  ) +
+  # prior / posterior：ケースで色分け、priorは点線、posteriorは実線
+  geom_line(
+    data = df12,
+    aes(x = t, y = value, color = case, linetype = series),
+    linewidth = 0.9
+  ) +
+  scale_linetype_manual(
+    values = c(prior = "dashed", posterior = "solid", smooth = "dotdash")
+  ) +
+  # backward smoothing 点予測：dotdash（caseで色分けは同じ）
+  geom_line(
+    data = df_sm,
+    aes(x = t, y = smooth, color = case, linetype = "smooth"),
+    linewidth = 1.1
+  ) +
+  labs(
+    x = "t",
+    y = "value",
+    color = "Case (K)",
+    linetype = "",
+    title = "Prior (a_t), Posterior (a_t^{+}), and Backward Smoother E[x_t|y^T] vs Observations"
+  ) +
+  theme_minimal()
+
+```
+
+#### Backward smoothing 実装 
+
+```{r FUN backward sampling}
+ck_backward_sampler_scalar <- function(fwd) {
+  # Draw x_{1:n} ~ p(x_{1:n} | y^n, K, theta) under linear-Gaussian (K fixed)
+  n   <- fwd$n
+  F   <- fwd$F
+  tau <- fwd$tau
+
+  a_filt <- fwd$a_upd
+  s_filt <- fwd$s_upd
+
+  # One-step-ahead prediction moments from filtered moments:
+  a_pred_next <- rep(NA_real_, n)
+  s_pred_next <- rep(NA_real_, n)
+  for (t in 1:(n - 1)) {
+    a_pred_next[t] <- F * a_filt[t]
+    s_pred_next[t] <- (F^2) * s_filt[t] + tau
+  }
+
+  # Smoothing gain J_t = Cov(x_t,x_{t+1}|y^t) / Var(x_{t+1}|y^t)
+  J <- rep(NA_real_, n)
+  for (t in 1:(n - 1)) {
+    J[t] <- (s_filt[t] * F) / s_pred_next[t]
+  }
+
+  x <- rep(NA_real_, n)
+
+  # 1) Draw terminal state from filtering distribution
+  x[n] <- rnorm(1, mean = a_filt[n], sd = sqrt(s_filt[n]))
+
+  # 2) Draw backward: x_t | (y^t, x_{t+1})
+  if (n >= 2) {
+    for (t in (n - 1):1) {
+      # Conditional mean: a_t^+ + J_t (x_{t+1} - a_{t+1|t})
+      mean_t <- a_filt[t] + J[t] * (x[t + 1] - a_pred_next[t])
+
+      # Conditional variance: s_t^+ - J_t^2 * Var(x_{t+1}|y^t)
+      var_t  <- s_filt[t] - (J[t]^2) * s_pred_next[t]
+      var_t  <- max(var_t, 0)  # numerical safety
+
+      x[t] <- rnorm(1, mean = mean_t, sd = sqrt(var_t))
+    }
+  }
+
+  list(
+    x_draw = x,
+    J = J,
+    a_filt = a_filt,
+    s_filt = s_filt,
+    a_pred_next = a_pred_next,
+    s_pred_next = s_pred_next
+  )
+}
+
+```
+
+```{r}
+# 1) Backward smoothing (RTS): E[x_t | y^T] and +/- 1 sd band
+sm <- ck_backward_smoother_scalar(fwd)
+
+df_band <- tibble(
+  t = 1:sm$n,
+  mean = sm$a_smooth,
+  sd   = sqrt(sm$s_smooth),
+  lo   = mean - sd,
+  hi   = mean + sd
+)
+
+# 2) Backward sampling: 10 sample paths
+set.seed(123)  # optional (for reproducibility)
+M <- 50
+Xdraw <- replicate(M, ck_backward_sampler_scalar(fwd)$x_draw)  # n x M
+
+df_draws <- as_tibble(Xdraw) %>%
+  mutate(t = 1:sm$n) %>%
+  pivot_longer(
+    cols = -t,
+    names_to = "draw",
+    values_to = "x"
+  ) %>%
+  mutate(draw = factor(draw))
+
+# 3) Plot: band + smoothed mean + 10 sampled trajectories
+ggplot() +
+  geom_ribbon(
+    data = df_band,
+    aes(x = t, ymin = lo, ymax = hi),
+    alpha = 0.2
+  ) +
+  geom_line(
+    data = df_band,
+    aes(x = t, y = mean),
+    linewidth = 1.1
+  ) +
+  geom_line(
+    data = df_draws,
+    aes(x = t, y = x, group = draw),
+    linewidth = 0.6,
+    alpha = 0.7
+  ) +
+  labs(
+    x = "t",
+    y = "state",
+    title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 10 backward-sampling draws"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+# 注意（Gibbs 全体にするには）
 
 このRmdは「$K$ を与えた条件付きで $p(X \mid Y^n,K, \theta)$ から状態列を引く」部分だけを実装しています。  
 Carter & Kohn の Gibbs 全体や Kim et al. のSV推計では、別途
