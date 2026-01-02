@@ -57,11 +57,10 @@ set.seed(1111)
 Carter & Kohn (1994) の基本モデルは
 
 $$
-y(t) = h(t)^\prime x(t) + e(t), \quad \text{(1-1)}
-$$
-
-$$
-x(t+1) = F(t+1)x(t) + u(t+1). \tag{1-2}
+\begin{alignedat}{2}
+y(t) &= h(t)^\prime x(t) + e(t), &\quad \text{(1-1)}\\
+x(t+1) &= F(t+1)x(t) + u(t+1). &\quad\text{(1-2)}
+\end{alignedat}
 $$
 
 - 観測：スカラー $y(t)$  
@@ -69,9 +68,6 @@ $$
 - indicator：$K(t)$（誤差の mixture 成分など）  
 - $K = \{K(1), \ldots,K(n)\}$ を与えると、誤差が条件付きガウスになり、(1-1)(1-2) はガウス状態空間
 
-本Rmdの目的は、Kim et al. で使う「状態列の同時生成」部分（Kalman filter + backward sampling）を、**そのまま実装できる粒度**で示すことです。
-
----
 
 # §2-2 の要点：後ろ向き分解（Lemma 2-1）
 
@@ -256,21 +252,68 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
 }
 ```
 
+$x_1$の事前予測は、
+$$ 
+\begin{aligned}
+x_1 &\sim N(a_1, s_1), \,\text{where}\\
+a_1 &= E[x_1|Y^0]\\
+s_1 &= E[(x_1-\hat{x}_1)^2|Y^0]
+\end{aligned}
+$$
+
+$y_1$の事前予測は、$y_t = hx_t + e_t,\ (e_t \sim \text{mixture})$より、
+
+$$
+\begin{aligned}
+y_1 &\sim N(b_1, v_1), \, \text{where}\\
+b_1 &= hE[x_1|Y^0] = ha_1,\\
+v_1 &= E[(y_1-\hat{y}_1)^2|Y^0] = E[\{h(x-\hat{x}_1)\}^2|Y^0] =h^2s_1+R_1
+\end{aligned}
+$$
+
+実現値との回帰
+
+$$
+\boxed{x_1-\hat{x}_1=L_1(y_1-\hat{y}_1) + \eta_1 }
+$$
+の両辺に$(y_1-\hat{y}_1)$をかけ期待値を取ると、
+
+$$ 
+\begin{aligned}
+\mathbb{E}[\underbrace{ (x_1-\hat{x}_1)(y_1-\hat{y}_1) }_{h(x_1-\hat{x}_1)(x_1-\hat{x}_1+e_t)}]&=L_1\mathbb{E}[(y_1-\hat{y}_1)^2]\\
+\Rightarrow hs_1 &= L_1 (h^2s_1+R_1)
+\end{aligned}
+$$
+$$
+\therefore L_1 =  \frac{hs_1}{h^2s_1+R_1}
+$$
+
+数値例に当てはめると、
+
+$$
+L_1 = \begin{cases}
+\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
+\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
+\end{cases}
+$$
+
+$$
+a_1^+ := \underbrace{ \hat{x}_1 }_{a_1}+L_1\underbrace{(y_1-\hat{y}_1)}_{y_1-ha_1} = \begin{cases}
+0 + 0.235 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
+0 + 0.235 \times (0.5-0) = 0.078 \quad (\text{high volatility})
+\end{cases}
+$$
 
 ```{r}
-# forward
 fwd1 <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
 fwd2 <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
-fwd1$a_upd
-fwd2$a_upd
-(h)/((h)^2+R)
-(h)/((h)^2+R*C)
-fwd1$gain[1]
-fwd2$gain[1]
+fwd1$gain
+fwd2$gain
+0+(h)/((h)^2+R)*(y[1]-0)
+0+(h)/((h)^2+R*C)*(y[1]-0)
 ```
-
 
 ```{r, eval = FALSE}
 # backward draw（1回）
@@ -284,8 +327,6 @@ data.frame(
   K_true = K_true
 )
 ```
-
----
 
 ## 6.3 複数ドローして（条件付き）事後平均の雰囲気を見る
 
@@ -309,8 +350,6 @@ data.frame(
   K_true = K_true
 )
 ```
-
----
 
 # 7. 注意（Gibbs 全体にするには）
 
