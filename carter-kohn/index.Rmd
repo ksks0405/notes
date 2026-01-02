@@ -309,11 +309,68 @@ fwd1 <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
 fwd2 <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
-fwd1$gain
-fwd2$gain
 0+(h)/((h)^2+R)*(y[1]-0)
 0+(h)/((h)^2+R*C)*(y[1]-0)
 ```
+
+```{r}
+# --- 1) プロット用データを作る（prior / posterior） ---
+mk_df <- function(fwd, case_label) {
+  tibble(
+    t = 1:fwd$n,
+    case = case_label,
+    prior = fwd$a,          # a_t = E[x_t | y^{t-1}]
+    posterior = fwd$a_upd   # a_t^{+} = E[x_t | y^{t}]
+  )
+}
+
+df12 <- bind_rows(
+  mk_df(fwd1, "K=(0,0,0,0)"),
+  mk_df(fwd2, "K=(1,1,1,1)")
+) %>%
+  pivot_longer(
+    cols = c(prior, posterior),
+    names_to = "series",
+    values_to = "value"
+  ) %>%
+  mutate(
+    series = factor(series, levels = c("prior", "posterior"))
+  )
+
+# --- 2) 観測値（×、線なし）は1本だけ ---
+df_obs <- tibble(
+  t = 1:length(y),
+  y = as.numeric(y)
+)
+
+# --- 3) ggplot ---
+ggplot() +
+  # 観測値：×（線なし）
+  geom_point(
+    data = df_obs,
+    aes(x = t, y = y),
+    shape = 4, size = 3, stroke = 1
+  ) +
+  # prior / posterior：ケースで色分け、priorは点線、posteriorは実線
+  geom_line(
+    data = df12,
+    aes(x = t, y = value, color = case, linetype = series),
+    linewidth = 0.9
+  ) +
+  scale_linetype_manual(
+    values = c(prior = "dashed", posterior = "solid")
+  ) +
+  labs(
+    x = "t",
+    y = "value",
+    color = "Case (K)",
+    linetype = "",
+    title = "Prior (a_t) and Posterior (a_t^{+}) vs Observations"
+  ) +
+  theme_minimal()
+
+```
+
 
 ```{r, eval = FALSE}
 # backward draw（1回）
