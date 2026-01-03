@@ -58,16 +58,6 @@ knitr::opts_hooks$set(label = function(options) {
 ```{r SET libraries, class.source='fold-hide'}
 pkgList <- c(
   "tidyverse", #must-have
-  "ggplots", # read xlsx
-  "plm",
-  "modelsummary",
-  "gridExtra",
-  "plm",
-  "pgmm"
-)
-
-pkgList <- c(
-  "tidyverse", #must-have
   "vars", # for VAR
   "zoo", # table for VAR
   "modelsummary", # summary functions and reg. tables
@@ -77,16 +67,6 @@ pkgList <- c(
 easypackages::libraries(pkgList)
 
 rm(pkgList)
-
-# pkgList <- c(
-#   "tidyverse", #must-have
-#   "vars", # for VAR
-#   "zoo", # table for VAR
-#   "modelsummary", # summary functions and reg. tables
-#   "quantmod" # FRED
-# )
-# easypackages::libraries(pkgList)
-# rm(pkgList)
 ```
 
 -   This chunk sets **the seed**.
@@ -123,7 +103,6 @@ df_var <- tibble(
   FF    = as.numeric(z_q[, "FF"])
 )
 ```
-
 
 ```{r FLT span}
 # 推計期間
@@ -179,10 +158,13 @@ coef_order <- c(
   "const"
 )
 
-msummary(var_est$varresult, stars = T, coef_map = coef_order, fmt = 3, statistic = "std.error",
-         title = "Reduced-form VAR Estimation Results")
+msummary(var_est$varresult, stars = T, coef_map = coef_order, fmt = 3, estimate = "{estimate} ({std.error}){stars}", statistic = NULL,
+         title = "Reduced-form VAR Estimation Results", gof_omit = "^BIC$|^AIC$|^R2$|^Log.Lik.$")
+```
 
-# stationary check
+stationary check
+
+```{r EXP ols result stationarity}
 print("Roots")
 roots(var_est)
 ```
@@ -306,6 +288,7 @@ alpha_OLS <- solve(t(Xbig) %*% Xbig) %*% t(Xbig) %*% y
 ### ミネソタ事前分布
 
 モデル再掲：
+
 $$
 y = (I_M \otimes X)\alpha + \varepsilon, \qquad \varepsilon \sim N(0, \Sigma \otimes I_T)
 $$
@@ -388,6 +371,38 @@ $$
 この分散構造により、高次ラグほど、また他変数のラグほど、係数はより強くゼロへと縮小される。
 
 
+$\underline{V}_{Mn}$の構造をvisualizeすると、以下の通り。
+
+$$
+\underline{V}_{Mn} = \begin{bmatrix}
+\underline{V}_1 & \mathbf{0} & \cdots & \mathbf{0} \\
+\mathbf{0} & \underline{V}_2 &  & \vdots \\
+\vdots &  & \ddots & \mathbf{0} \\
+\mathbf{0} & \cdots & \mathbf{0} & \underline{V}_M
+\end{bmatrix}
+$$
+
+$$
+\underline{V}_i = \text{diag} \left( 
+\underbrace{a_3^2 \sigma_i^2}_{\text{Constant}}, \quad 
+\underbrace{v_{i, 1}^{(1)}, v_{i, 2}^{(1)}, \dots, v_{i, M}^{(1)}}_{\text{Lag } r=1}, \quad 
+\dots, \quad 
+\underbrace{v_{i, 1}^{(p)}, v_{i, 2}^{(p)}, \dots, v_{i, M}^{(p)}}_{\text{Lag } r=p} 
+\right)
+$$
+
+例えば、第1方程式 ($i=1$) の対角要素を具体的に書き出すと、
+
+$$
+\underline{V}_1 = \begin{bmatrix}
+a_3^2 \sigma_1^2 & 0 & 0 & \cdots & 0 \\
+0 & \frac{a_1^2}{1^2} & 0 & \cdots & 0 \\
+0 & 0 & \frac{a_2^2}{1^2} \frac{\sigma_1^2}{\sigma_2^2} &  & \vdots \\
+\vdots & \vdots &  & \ddots & 0 \\
+0 & 0 & \cdots & 0 & \frac{a_2^2}{p^2} \frac{\sigma_1^2}{\sigma_M^2}
+\end{bmatrix}
+$$
+
 ```{r REG minnesota prior, class.source = 'fold-show'}
 ### hyperparamter
 a1 <- 1
@@ -401,9 +416,10 @@ alpha_Mn[c(0*K+1+1, 1*K+2+1, 2*K+3+1)] <- 1
 ### V
 V_Mn_diag <- rep(NA, M*K)
 
-# lag decay part
+# lag decay part (common across equations)
 V_Mn_r <- c(1, rep((1:p)^(-2), each = M)) 
-# a and sigma part
+
+# a and sigma part (DIFFERENT across equations)
 for (i in 1:M) {
   V_Mn_asigma <- rep(NA_real_, K)
   

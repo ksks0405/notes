@@ -88,7 +88,77 @@ $$
 
 です。
 
-# 数値例
+# FFBS数値例
+
+## モデル
+
+
+Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
+
+$$
+\begin{alignedat}{2}
+y_t &= h\,x_t + e_t, && \qquad t=1,\ldots,n,\\
+x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1.
+\end{alignedat}
+$$
+である。ここで $y_t$ はスカラー観測、$x_t$ はスカラー状態、$h$ は既知（あるいはパラメータ）のスカラー係数、$e_t$ は観測誤差、 $F$ は既知（あるいはパラメータ）のスカラー係数、$u_t$ は状態方程式のイノベーションである。
+
+状態イノベーションは同分散（homoskedastic）な分散$\tau>0$を用いて下記のように表す。
+$$
+u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
+$$
+
+観測誤差は二成分の混合正規（mixture normal）であり、、 基準分散 $R>0$ 、 スケール $C>1$ により以下のように表す。
+$$
+e_t \mid K_t=0 \sim N(0,R),\qquad
+e_t \mid K_t=1 \sim N(0,CR), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
+$$
+
+- $y_t$：観測値
+- $x_t$：状態（未知）
+
+以下はモデルのパラメータ。
+
+- $h$：観測方程式のAR項、$F$：状態遷移方程式のAR項、$R$：観測方程式のノイズ、 $C$：観測方程式のノイズ（状態$2$のスケーラー）、  $\tau$：状態遷移方程式のノイズの分散、$K_t\in\{0,1\}$：潜在 indicator 
+
+$\{K_t\}$ は（少なくとも事前には）時点間独立であるとする。
+
+初期状態には便宜的に
+$$
+x_1 \sim N(a_1, s_1)
+$$
+を仮定する。ここで $a_1$ は初期平均、$s_1$ は初期分散である。
+
+さらに、条件付きでガウス状態空間になるように、$K=(K_1,\ldots,K_n)$ を与えたもとで
+$\{e_t\}$ と $\{u_t\}$ は互いに独立、かつそれぞれ時点間独立であると仮定する。
+
+$K_t$ を与えると観測誤差分散は時点ごとに
+$$
+R_t := \mathrm{Var}(e_t\mid K_t)=
+\begin{cases}
+R & (K_t=0),\\
+CR & (K_t=1),
+\end{cases}
+$$
+と確定し、モデルは $(h,F,R_t,\tau)$ を持つ線形ガウス状態空間モデルとして扱える。
+
+予測量（forward filteringで使う記号）
+
+forward filtering では、予測分布
+$$
+x_t \mid y^{t-1} \sim N(a_t, s_t)
+$$
+を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。
+このとき予測された観測分布は
+$$
+y_t \mid y^{t-1} \sim N(b_t, v_t),
+$$
+ただし
+$$
+b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
+v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
+$$
+である。
 
 ## データ生成（fictitious data）
 
@@ -129,67 +199,7 @@ truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e,
 truth
 ```
 
-## 流れ：Kを条件づけて状態列を一括生成
 
-Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
-
-$$
-\begin{alignedat}{2}
-y_t &= h\,x_t + e_t, && \qquad t=1,\ldots,n,\\
-x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1.
-\end{alignedat}
-$$
-である。ここで $y_t$ はスカラー観測、$x_t$ はスカラー状態、$h$ は既知（あるいはパラメータ）のスカラー係数、$e_t$ は観測誤差、 $F$ は既知（あるいはパラメータ）のスカラー係数、$u_t$ は状態方程式のイノベーションである。
-
-状態イノベーションは同分散（homoskedastic）な分散$\tau>0$を用いて下記のように表す。
-$$
-u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
-$$
-
-観測誤差は二成分の混合正規（mixture normal）であり、潜在 indicator $K_t\in\{0,1\}$、 基準分散 $R>0$ 、 スケール $C>1$ により以下のように表す。
-$$
-e_t \mid K_t=0 \sim N(0,R),\qquad
-e_t \mid K_t=1 \sim N(0,CR), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
-$$
-
-$\{K_t\}$ は（少なくとも事前には）時点間独立であるとする。
-
-初期状態には便宜的に
-$$
-x_1 \sim N(a_1, s_1)
-$$
-を仮定する。ここで $a_1$ は初期平均、$s_1$ は初期分散である。
-
-さらに、条件付きでガウス状態空間になるように、$K=(K_1,\ldots,K_n)$ を与えたもとで
-$\{e_t\}$ と $\{u_t\}$ は互いに独立、かつそれぞれ時点間独立であると仮定する。
-
-$K_t$ を与えると観測誤差分散は時点ごとに
-$$
-R_t := \mathrm{Var}(e_t\mid K_t)=
-\begin{cases}
-R & (K_t=0),\\
-CR & (K_t=1),
-\end{cases}
-$$
-と確定し、モデルは $(h,F,R_t,\tau)$ を持つ線形ガウス状態空間モデルとして扱える。
-
-予測量（forward filteringで使う記号）
-
-forward filtering では、予測分布
-$$
-x_t \mid y^{t-1} \sim N(a_t, s_t)
-$$
-を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。
-このとき予測された観測分布は
-$$
-y_t \mid y^{t-1} \sim N(b_t, v_t),
-$$
-ただし
-$$
-b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
-v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
-$$
-である。
 
 ### Forward filtering
 
