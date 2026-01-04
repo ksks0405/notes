@@ -304,3 +304,7 @@ ggplot(hist_df_finite, aes(x = theta_true, y = theta_hat_mid, fill = density)) +
 
 ```
 
+# メモ
+
+1/4 classical inference への示唆はわかったが、Bayesian への示唆（prior elicitationやcointegrationとの関係）はわからない…
+→Sims and Zha?
