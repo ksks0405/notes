@@ -9,6 +9,8 @@ output: html_document
 
 - [BEM Ch.10](./bem-chap10/)
 
+- [BEM Ch.10](./bem-chap18/)
+
 - [Dynamic panel](./dynamic-panel/)
 
 - [Carter Kohn](./carter-kohn/)

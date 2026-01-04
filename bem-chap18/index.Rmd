@@ -1,0 +1,306 @@
+---
+title: "BEM Chap. 18 Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: show
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- The chunks in this code are classified as follows: -->
+
+<!-- -   SET: Load package, set default options, define functions and variables, etc. -->
+
+<!-- -   IMP: Import data. -->
+
+<!-- -   PRE: Process data, including creating and editing variables, -->
+
+<!-- -   FLT: Process data that involve FILTERING. -->
+
+<!-- -   EDA: Exploratory Data Analysis -->
+
+<!-- -   REG: Regressions -->
+
+<!-- -   EXP: Export results -->
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+-   This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+-   This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title = TRUE,
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = FALSE,
+  warning = FALSE,
+  class.source = 'fold-hide'
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+-   This chunk **loads the required packages** and **my functions**.
+
+```{r SET packages, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse", #must-have
+  "ggplot2",
+  "MASS"
+)
+easypackages::libraries(pkgList)
+rm(pkgList)
+```
+
+-   This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+# Exercise 18.2 シミュレーション
+
+### モデル（DGP）
+AR(1) を用いる：
+$$
+\begin{aligned}
+&y_t=\theta y_{t-1}+\varepsilon_t,\qquad t=1,\dots,T,\\
+&\quad\varepsilon_t \overset{i.i.d.}{\sim} N(0,1), \\
+&\quad y_0=0.
+\end{aligned}
+$$
+
+### サンプル（Monte Carlo）
+$\theta$ はユニットルート近傍を含む 31 通り：
+$$
+\theta \in \{0.80,0.81,\dots,1.10\}.
+$$
+
+各 $\theta$ について、長さ $T=100$ の系列を 10,000 本生成する：
+- まず $\{\varepsilon_t\}_{t=1}^T$ を 10,000 本生成
+- 次に DGP により $\{y_t\}_{t=1}^T$ を生成
+
+### 推定量（次のステップで計算）
+各系列について OLS（AR(1)）推定量を計算：
+$$
+\hat{\theta}=\frac{\sum_{t=1}^{T} y_t y_{t-1}}{\sum_{t=1}^{T} y_{t-1}^2}.
+$$
+
+目的：$\theta$ が 1 の近傍（定常・ユニットルート・爆発）で $\hat{\theta}$ の有限標本分布がどう変わるかを比較する。
+
+
+```{r}
+# Parameters
+theta_grid <- seq(0.80, 1.10, by = 0.01)  # 31 values
+T_len      <- 100
+n_rep      <- 10000
+
+eps_list <- setNames(vector("list", length(theta_grid)),
+                     sprintf("theta_%0.2f", theta_grid))
+for (k in seq_along(theta_grid)) {
+  eps_list[[k]] <- matrix(rnorm(T_len * n_rep), nrow = T_len, ncol = n_rep)
+}
+```
+
+```{r}
+# plotしたい theta
+theta_plot <- c(0.80, 0.99, 1.00)
+
+# eps_list の名前から theta -> eps を引く（names 前提）----
+get_eps_by_theta <- function(theta, eps_list) {
+  key <- sprintf("theta_%0.2f", theta)
+  eps_list[[key]]
+}
+
+# eps から AR(1) パス y を作る
+gen_y_from_eps <- function(eps_mat, theta) {
+  T_len <- nrow(eps_mat)
+  y <- matrix(0.0, nrow = T_len, ncol = ncol(eps_mat))
+  y[1, ] <- eps_mat[1, ]
+  if (T_len >= 2) for (t in 2:T_len) y[t, ] <- theta * y[t - 1, ] + eps_mat[t, ]
+  y
+}
+
+# バンド（5-95）＋中央値＋IQR(25-75)を作る
+band_df <- map_dfr(theta_plot, function(th) {
+  eps <- get_eps_by_theta(th, eps_list = eps_list)
+  y   <- gen_y_from_eps(eps, theta = th)
+
+  tibble(
+    t     = 1:nrow(y),
+    theta = factor(sprintf("%.2f", th), levels = sprintf("%.2f", theta_plot)),
+    q05   = apply(y, 1, quantile, probs = 0.05),
+    q25   = apply(y, 1, quantile, probs = 0.25),
+    q50   = apply(y, 1, quantile, probs = 0.50),
+    q75   = apply(y, 1, quantile, probs = 0.75),
+    q95   = apply(y, 1, quantile, probs = 0.95)
+  )
+})
+
+# (1) t<=10：ribbon(5-95) + 中央値 + 点線(25,75)
+band_df %>%
+  # filter(t <= 10) %>%
+  ggplot(aes(x = t)) +
+  geom_ribbon(aes(ymin = q05, ymax = q95, fill = theta), alpha = 0.15, color = NA) +
+  geom_line(aes(y = q50, color = theta), linewidth = 0.9) +
+  geom_line(aes(y = q25, color = theta), linewidth = 0.7, linetype = "dashed") +
+  geom_line(aes(y = q75, color = theta), linewidth = 0.7, linetype = "dashed") +
+  labs(x = "t", y = "y", fill = expression(theta), color = expression(theta)) +
+  theme_minimal()
+# 
+# # (2) 全期間：中央値 + 点線(25,75)
+# band_df %>%
+#   ggplot(aes(x = t)) +
+#   geom_line(aes(y = q50, color = theta), linewidth = 0.9) +
+#   labs(x = "t", y = "y", color = expression(theta)) +
+#   theme_minimal()
+```
+
+
+```{r}
+# 各 theta で「最初の10系列」をロング化
+n_show <- 10
+
+paths_df <- map_dfr(theta_plot, function(th) {
+  eps <- get_eps_by_theta(th, eps_list)
+  y   <- gen_y_from_eps(eps, theta = th)
+
+  stopifnot(ncol(y) >= n_show)
+
+  y10 <- y[, 1:n_show, drop = FALSE]  # 最初の10系列（列1〜10）
+
+  as_tibble(y10) |>
+    mutate(t = 1:nrow(y10)) |>
+    pivot_longer(cols = -t, names_to = "series", values_to = "y") |>
+    mutate(
+      theta  = factor(sprintf("%.2f", th), levels = sprintf("%.2f", theta_plot)),
+      series = factor(series, levels = paste0("V", 1:n_show), labels = paste0("sim", 1:n_show))
+    )
+})
+
+# facetで横並び
+ggplot(paths_df, aes(x = t, y = y, group = series, color = series)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  facet_wrap(~ theta, nrow = 1) +
+  labs(x = "t", y = "y", color = "series") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+library(tidyverse)
+
+# ============================================================
+# Exercise 18.2: compute theta_hat for 310,000 series and plot
+# Uses eps_list[["theta_0.80"]], ..., eps_list[["theta_1.10"]]
+# Each eps_list[[key]] is a (T x n_rep) matrix, columns are series.
+# ============================================================
+
+# ---- design ----
+theta_grid <- seq(0.80, 1.10, by = 0.01)  # 31 values
+T_len      <- 100
+n_rep      <- 10000
+
+# ---- bins in the text: (-Inf,0.795),[0.795,0.805),...,[1.095,1.105),[1.105,Inf) ----
+breaks <- c(-Inf, seq(0.795, 1.105, by = 0.01), Inf)  # 33 bins
+bin_mid <- c(0.79, seq(0.80, 1.10, by = 0.01), 1.11)  # midpoint labels (33)
+
+# ---- pull eps for a theta (names assumed) ----
+get_eps_by_theta <- function(theta, eps_list) {
+  key <- sprintf("theta_%0.2f", theta)
+  eps_list[[key]]
+}
+
+# ---- generate y from eps: y_t = theta y_{t-1} + eps_t, y0=0 ----
+gen_y_from_eps <- function(eps_mat, theta) {
+  T_len <- nrow(eps_mat)
+  y <- matrix(0.0, nrow = T_len, ncol = ncol(eps_mat))
+  y[1, ] <- eps_mat[1, ]  # y0=0 => y1=eps1
+  if (T_len >= 2) {
+    for (t in 2:T_len) y[t, ] <- theta * y[t - 1, ] + eps_mat[t, ]
+  }
+  y
+}
+
+# ---- compute MLE/OLS theta_hat for each series (each column) ----
+theta_hat_mle <- function(y_mat) {
+  T_len <- nrow(y_mat)
+  y_lag <- y_mat[1:(T_len - 1), , drop = FALSE]
+  y_cur <- y_mat[2:T_len,       , drop = FALSE]
+  num <- colSums(y_cur * y_lag)
+  den <- colSums(y_lag^2)
+  num / den
+}
+
+# ---- for each theta: compute theta_hat, bin counts/density ----
+hist_list <- vector("list", length(theta_grid))
+
+for (i in seq_along(theta_grid)) {
+  th <- theta_grid[i]
+
+  eps <- get_eps_by_theta(th, eps_list)
+  stopifnot(nrow(eps) == T_len, ncol(eps) == n_rep)
+
+  y   <- gen_y_from_eps(eps, theta = th)
+  thh <- theta_hat_mle(y)
+
+  # bins: left-closed right-open [a,b)
+  b <- cut(thh, breaks = breaks, right = FALSE, include.lowest = TRUE)
+
+  # ensure all bins present (33)
+  cnt <- tabulate(b, nbins = length(breaks) - 1)
+
+  # density per bin (for finite-width bins, width=0.01; extremes are "infinite", but keep same scale)
+  # If you prefer raw frequency, use `count = cnt` instead.
+  dens <- cnt / (n_rep * 0.01)
+
+  hist_list[[i]] <- tibble(
+    theta_true   = th,
+    bin_id       = seq_along(cnt),
+    theta_hat_mid= bin_mid,
+    count        = cnt,
+    density      = dens
+  )
+}
+
+hist_df <- bind_rows(hist_list)
+
+# ============================================================
+# (A) 31 histograms (faceted): using the text bins
+#     - we usually drop the two infinite-edge bins for readability
+# ============================================================
+hist_df_finite <- hist_df %>% filter(theta_hat_mid >= 0.80, theta_hat_mid <= 1.10)
+
+hist_df_finite %>% 
+  # filter(theta_true %in% c(0.9, 0.99, 1)) %>% 
+ggplot(aes(x = theta_hat_mid, y = density)) +
+  geom_col(width = 0.01) +
+  facet_wrap(~ theta_true, ncol = 6) +
+  labs(x = expression(hat(theta)), y = "hist density (per 0.01 bin)") +
+  theme_minimal()
+
+# ============================================================
+# (B) Surface plot (joint p.d.f. under Uniform theta on [0.80,1.10])
+#     - tile of densities: x = theta, y = theta_hat bin mid
+# ============================================================
+ggplot(hist_df_finite, aes(x = theta_true, y = theta_hat_mid, fill = density)) +
+  geom_tile() +
+  labs(x = expression(theta), y = expression(hat(theta))) +
+  theme_minimal()
+
+```
+
