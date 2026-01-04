@@ -3,13 +3,11 @@ title: Notes
 output: html_document
 ---
 
-# Notes
-
 - [BVAR](./bayesian-var/)
 
 - [BEM Ch.10](./bem-chap10/)
 
-- [BEM Ch.10](./bem-chap18/)
+- [BEM Ch.18](./bem-chap18/)
 
 - [Dynamic panel](./dynamic-panel/)
 
