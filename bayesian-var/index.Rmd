@@ -671,53 +671,39 @@ c <- C %*% alpha_Mn
 上のマッピングを用いると、対応するMinnesota Priorの事後分布は下記のように書き換えられる。
 
 $$
-\bar{V}_{Mn}=\left(
-  \underbrace{C'C}_{\underline{V}_{Mn}^{-1}}+
-  \underbrace{(\Sigma^{-1}\otimes X'X)}_{\text{likelihood precision}}
-\right)^{-1}
+\begin{aligned}
+\bar{V}_{Mn} &= \left(\underbrace{C'C}_{\underline{V}_{Mn}^{-1}}+  \underbrace{(\Sigma^{-1}\otimes X'X)}_{\text{likelihoodprecision}}\right)^{-1}\\
+\bar{\alpha}_{Mn} &= \bar{V}_{Mn} \left(\underbrace{C'c}_{\underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}}+ (\Sigma^{-1}\otimes X')y \right).
+\end{aligned}
 $$
 
-$$
-\bar{\alpha}_{Mn}=\bar{V}_{Mn} \left(
-  \underbrace{C'c}_{\underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}}+
-  \underbrace{(\Sigma^{-1}\otimes X')}_{}y
-\right).
-$$
+これは、**prior を dummy observation として加えた拡張回帰モデルのGLS推定量**である。すなわち、Minnesota prior を用いた Bayesian VAR は、
 
-これは、**prior を dummy observation として加えた拡張回帰モデルのGLS推定量**である。
+> **「本来のデータに、prior に由来する dummy observation を加えた GLS 推定」**
+
+として解釈できる。
 
 $$
-\underbrace{\begin{bmatrix}y \\ c\end{bmatrix}}_{(TM+KM)\times 1}= \underbrace{ \begin{bmatrix} I_M \otimes X \\ C \end{bmatrix} }_{(TM+KM)\times KM} \alpha + \underbrace{ \begin{bmatrix} \varepsilon \\ e \end{bmatrix} }_{(TM+KM)\times 1}, 
+\begin{aligned}
+\underbrace{\begin{bmatrix}y \\ c\end{bmatrix}}_{(TM+KM)\times 1}
+&= \underbrace{ \begin{bmatrix} I_M \otimes X \\ C \end{bmatrix} }_{(TM+KM)\times KM} \alpha + \underbrace{ \begin{bmatrix} \varepsilon \\ e \end{bmatrix} }_{(TM+KM)\times 1}, \\
+\begin{bmatrix} \varepsilon \\ e \end{bmatrix} &\sim
+N\!\left( 0,\; \underbrace{ \begin{bmatrix} \Sigma \otimes I_T & 0 \\ 0 & I \end{bmatrix} }_{\Omega} \right).
+\end{aligned}
 $$
-
-$$
-\begin{bmatrix}
-\varepsilon \\
-e
-\end{bmatrix}
-\sim
-N\!\left(
-0,\;
-\underbrace{
-\begin{bmatrix}
-\Sigma \otimes I_T & 0 \\
-0 & I
-\end{bmatrix}
-}_{\Omega}
-\right).
-\tag{5.2.11}
-$$
+### R コード
 
 ```{r REG minn dummy reg, class.source = 'fold-show'}
+# dummy data matrix
 y_dum <- rbind(matrix(y, ncol = 1), c)
 Xbig_dum <- rbind(Xbig, C)
 
 n_data  <- length(y)     # = TT*M
 n_prior <- nrow(C)       # = K*M
 
+# vcov matrix
 Omega_data_inv  <- kronecker(solve(Omega_Mn), diag(TT))
 Omega_prior_inv <- diag(n_prior)
-
 Omega_inv <- matrix(0, n_data + n_prior, n_data + n_prior)
 Omega_inv[1:n_data, 1:n_data] <- Omega_data_inv
 Omega_inv[(n_data+1):(n_data+n_prior), (n_data+1):(n_data+n_prior)] <- Omega_prior_inv
@@ -741,11 +727,208 @@ rownames(A_Mn_gls_dummy) <- rownames(A_OLS)
 ```
 
 
-このように、Minnesota prior を用いた Bayesian VAR は、
+## sum-of-coefficients prior
 
-> **「本来のデータに、prior に由来する dummy observation を加えた GLS 推定」**
+The setting follows Kilian and Lutkepohl (2016, pp159).
 
-として解釈できる。
+```{r REG soc dummy}
+mu_socdum <- colMeans(Y)
+tau_socdum <- 1
+Y_socdum <- rbind(Y, diag(mu_socdum)/tau_socdum)
+X_socdum <- rbind(X, 
+                  t(rbind(matrix(0, nrow = 1, ncol = M), kronecker(matrix(1, nrow = p, ncol = 1), diag(mu_socdum)/tau_socdum))))
+
+A_socdum <- solve(t(X_socdum) %*% X_socdum) %*% t(X_socdum) %*% Y_socdum
+A_socdum
+A_OLS
+```
+
+
+```{r}
+# --- 変数名 ---
+vars <- c("lRGDP", "lDEF", "FF")
+
+# --- K と rownames の想定順序（あなたの X 構成と一致）---
+K <- 1 + length(vars) * p
+coef_names <- c("const", unlist(lapply(1:p, function(l) paste0(vars, ".l", l))))
+
+# A_OLS（あなたのコードだと rownames が落ちてる可能性あり）
+rownames(A_OLS) <- colnames(X)   # まずここで付けるのが自然
+colnames(A_OLS) <- vars
+
+# A_Mn_post（あなたのコードでは A_Mn_post は KxM に戻している）
+rownames(A_Mn_post) <- rownames(A_OLS)
+colnames(A_Mn_post) <- vars
+
+# A_socdum（あなたのコードで計算した A_socdum）
+rownames(A_socdum) <- colnames(X)  # X と同じ regressor 順序のはず
+colnames(A_socdum) <- vars
+
+# 念のため：順序チェック（欠けてたら止める）
+stopifnot(identical(rownames(A_OLS), coef_names))
+stopifnot(identical(rownames(A_Mn_post), coef_names))
+stopifnot(identical(rownames(A_socdum), coef_names))
+
+```
+
+
+```{r}
+make_var_fit_forecast <- function(df, date_col = "date", vars, p, A, h = 40, add_const = TRUE) {
+  stopifnot(all(c(date_col, vars) %in% names(df)))
+  stopifnot(is.matrix(A))
+  stopifnot(ncol(A) == length(vars))
+
+  df <- df |> arrange(.data[[date_col]])
+  Ymat <- as.matrix(df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat)
+  M <- length(vars)
+  K <- (if (add_const) 1L else 0L) + M * p
+  stopifnot(nrow(A) == K)
+
+  # 1行の regressor を作る：x_t = (1, vec([y_{t-1},...,y_{t-p}])) の順（lagごとに vars を並べる）
+  make_x <- function(lag_block) {
+    # lag_block: p x M, rows = (t-1, t-2, ..., t-p), cols = vars
+    x_no_const <- as.vector(t(lag_block))  # lag1の(vars順) -> lag2 -> ...（あなたの X と一致）
+    if (add_const) c(1, x_no_const) else x_no_const
+  }
+
+  # --- in-sample fitted ---
+  fitted <- matrix(NA_real_, nrow = T_df, ncol = M)
+  for (t in (p + 1):T_df) {
+    lag_block <- Ymat[(t - 1):(t - p), , drop = FALSE]
+    x_t <- make_x(lag_block)
+    fitted[t, ] <- as.numeric(x_t %*% A)
+  }
+
+  # --- recursive point forecast h-step ahead ---
+  # 初期ラグは「最後の p 期の実績」を使う（必要なら fitted を使う版も作れるが、標準は実績）
+  hist <- Ymat[(T_df):(T_df - p + 1), , drop = FALSE]  # rows: T, T-1, ... の順
+  fc <- matrix(NA_real_, nrow = h, ncol = M)
+
+  for (s in 1:h) {
+    # make_x は rows=(t-1,...,t-p) を想定。hist は rows=(latest, ..., older) なのでそのまま使える
+    x_s <- make_x(hist[1:p, , drop = FALSE])
+    y_next <- as.numeric(x_s %*% A)
+    fc[s, ] <- y_next
+    hist <- rbind(y_next, hist)  # 先頭に追加してラグ更新
+  }
+
+  # 日付：四半期の末日が入っている前提で、次期以降を seq で作る
+  last_date <- df[[date_col]][T_df]
+  fc_dates <- seq(from = last_date, by = "quarter", length.out = h + 1)[-1]
+
+  list(
+    in_sample = tibble(
+      date = df[[date_col]],
+      !!!setNames(as.data.frame(Ymat), vars),
+      !!!setNames(as.data.frame(fitted), paste0(vars, "_fitted"))
+    ),
+    forecast = tibble(
+      date = fc_dates,
+      !!!setNames(as.data.frame(fc), paste0(vars, "_forecast"))
+    )
+  )
+}
+
+```
+
+```{r}
+h <- 40 # h = 1000でもSOCは収束しない（ダラダラと下がり続ける）
+
+res_ols  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_OLS,     h = h)
+res_mn   <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_Mn_post, h = h)
+res_soc  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_socdum,  h = h)
+```
+
+```{r}
+# 1) 各手法の「fitted+forecast」を1本に結合した series を作る
+
+mk_method_series <- function(res, method, vars) {
+  # in-sample fitted: date, var_fitted
+  df_fit <- res$in_sample |>
+    dplyr::select(date, ends_with("_fitted")) |>
+    pivot_longer(-date, names_to = "name", values_to = "value") |>
+    mutate(var = str_remove(name, "_fitted")) |>
+    dplyr::select(date, var, value)
+
+  # forecast: date, var_forecast
+  df_fc <- res$forecast |>
+    pivot_longer(-date, names_to = "name", values_to = "value") |>
+    mutate(var = str_remove(name, "_forecast")) |>
+    dplyr::select(date, var, value)
+
+  bind_rows(df_fit, df_fc) |>
+    mutate(method = method)
+}
+
+df_actual <- df_var |>
+  dplyr::select(date, all_of(vars)) |>
+  pivot_longer(-date, names_to = "var", values_to = "value") |>
+  mutate(method = "Actual")
+
+df_ols_series <- mk_method_series(res_ols, "OLS", vars)
+df_mn_series  <- mk_method_series(res_mn,  "Minnesota", vars)
+df_soc_series <- mk_method_series(res_soc, "SOC", vars)
+
+df_plot4 <- bind_rows(
+  df_actual,
+  df_ols_series,
+  df_mn_series,
+  df_soc_series
+) |>
+  mutate(
+    var = factor(var, levels = vars),
+    method = factor(method, levels = c("Actual", "OLS", "Minnesota", "SOC"))
+  )
+
+# 2) 3枚（変数ごと）に分けて、4本をカラフルに重ね描き
+
+
+# 色（見やすさ優先の例。好みで変えてOK）
+col_map <- c(
+  "Actual"     = "#000000", # 黒
+  "OLS"        = "#1f77b4", # 青
+  "Minnesota"  = "#ff7f0e", # オレンジ
+  "SOC"        = "#2ca02c"  # 緑
+)
+
+# 線種（色に加えて冗長にして判別しやすく）
+lt_map <- c(
+  "Actual"     = "solid",
+  "OLS"        = "solid",
+  "Minnesota"  = "dashed",
+  "SOC"        = "dotdash"
+)
+
+# 太さ（Actualを少し太く）
+lw_map <- c(
+  "Actual"     = 1.2,
+  "OLS"        = 0.9,
+  "Minnesota"  = 0.9,
+  "SOC"        = 0.9
+)
+
+plots_3 <- lapply(levels(df_plot4$var), function(v) {
+  dfi <- df_plot4 |> dplyr::filter(var == v)
+
+  ggplot(dfi, aes(x = date, y = value, color = method, linetype = method, linewidth = method)) +
+    geom_line() +
+    scale_color_manual(values = col_map) +
+    scale_linetype_manual(values = lt_map) +
+    scale_linewidth_manual(values = lw_map) +
+    labs(
+      title = paste0(v, ": Actual vs OLS/Minnesota/SOC (fitted+forecast)"),
+      x = NULL, y = NULL, color = "", linetype = "", linewidth = ""
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+})
+
+for (g in plots_3) print(g)
+
+```
+
+
 
 ## Natural Conjugate Prior
 
@@ -785,6 +968,20 @@ $$
 $$
  (\omega_{ij}=\omega_{ji}):\mathrm{tr}\!\left(\Sigma^{-1}U'U\right)=\sum_{t=1}^4\Big(\omega_{11}u_{t1}^2+\omega_{22}u_{t2}^2+\omega_{33}u_{t3}^2+2\omega_{12}u_{t1}u_{t2}+2\omega_{13}u_{t1}u_{t3}+2\omega_{23}u_{t2}u_{t3}\Big).
 $$
+
+
+```{r}
+# mu_0 <- 1
+# mu_1 <- 1
+# # mu_2 <- 1 "should be set to 1"
+# mu_3 <- 1
+# sigma <- c(1,1,1)
+# 
+# Ydum <- matrix(0, nrow = K-1, ncol = M)
+# 
+# diag(Ydum) <- mu_1 * mu_3 * sigma
+```
+
 
 各時点の残差ベクトルの二次形式を足しあげたもの。つまり、$\Sigma^{-1}$の非対角要素がある限り、交差項（e.g. $\sum_t u_{t1}u_{t2}$）が入る。
 つまり、**尤度が方程式ごとに分解できない。**（c.f. $\Sigma$が対角なら、方程式ごとのOLS尤度の積に分解可能）
