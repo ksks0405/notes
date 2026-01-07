@@ -769,7 +769,7 @@ colnames(A_soc) <- vars
 estimate_A_soc <- function(train_df, vars, p, tau = 1) {
   vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
   X <- vm$X; Y <- vm$Y
-  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+  M <- length(vars)
 
   mu <- colMeans(train_df[1:p, vars, drop=FALSE])
   Yd <- rbind(Y, diag(mu)/tau)
@@ -785,7 +785,7 @@ estimate_A_soc <- function(train_df, vars, p, tau = 1) {
 
 ### $\tau$ の役割
 
-- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響小→**自己ラグの係数の和が1に近づく**
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響大→**自己ラグの係数の和が1に近づく**
 
 - $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
 
@@ -850,13 +850,8 @@ colnames(A_dobs) <- vars
 ```{r FUN dobs dummy regression, class.source='fold-show'}
 estimate_A_dobs <- function(train_df, vars, p, tau = 1) {
   vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
-  X <- vm$X
-  Y <- vm$Y
-
+  X <- vm$X; Y <- vm$Y
   M <- length(vars)
-  K <- 1 + M * p
-  TT <- nrow(Y)
-  if (TT < p) stop("Not enough observations after lag truncation for dobs prior.")
 
   # KL dummy observations prior (dummy obs)
   # use the first p observations *in Y* (i.e. after removing initial lags)
@@ -873,13 +868,13 @@ estimate_A_dobs <- function(train_df, vars, p, tau = 1) {
 
 ### $\tau$ の役割
 
-- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響小→**自己ラグの係数の和が1に近づく**
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響大→**自己ラグの係数の和が1に近づく**
 
 - $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
 
 ```{r REG dobs dummy different tau, class.source='fold-show'}
-A_dobs_bigtau <- estimate_A_soc(df_var, vars, p, tau = 10^4)
-A_dobs_smalltau <- estimate_A_soc(df_var, vars, p, tau = 10^(-4))
+A_dobs_bigtau <- estimate_A_dobs(df_var, vars, p, tau = 10^4)
+A_dobs_smalltau <- estimate_A_dobs(df_var, vars, p, tau = 10^(-4))
 ```
 
 ```{r EXP dobs dummy different tau}
@@ -1251,7 +1246,6 @@ var_1step_fc <- function(train_df, vars, p, A, add_const = TRUE) {
   drop(x %*% A)  # length M
 }
 
-# estimate A by method on a given training set
 estimate_A_ols <- function(train_df, vars, p) {
   vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
   X <- vm$X; Y <- vm$Y
@@ -1259,6 +1253,57 @@ estimate_A_ols <- function(train_df, vars, p) {
 }
 
 estimate_A_mn_post <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y; y <- vm$y
+  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+
+  # window OLS Sigma
+  A_ols <- solve(crossprod(X), crossprod(X, Y))
+  U <- Y - X %*% A_ols
+  Omega_hat <- crossprod(U) / (TT - K)
+
+  # Minnesota prior mean (general M)
+  alpha0 <- matrix(0, M*K, 1)
+  idx_ownlag1 <- (0:(M-1))*K + (1 + (1:M))
+  alpha0[idx_ownlag1] <- 1
+
+  # Minnesota prior variance diag (general M)
+  Vdiag <- rep(NA_real_, M*K)
+  V_r <- c(1, rep((1:p)^(-2), each = M))
+
+  for (i in 1:M) {
+    tmp <- rep(NA_real_, K)
+    tmp[1] <- (a3^2) * Omega_hat[i,i]  # const
+    for (j in 1:M) {
+      idx_j <- 1 + j + (0:(p-1))*M
+      if (i == j) tmp[idx_j] <- (a1^2)
+      else        tmp[idx_j] <- (a2^2) * (Omega_hat[i,i]/Omega_hat[j,j])
+    }
+    Vdiag[(1+(i-1)*K):(i*K)] <- V_r * tmp
+  }
+
+  Vinv <- diag(1/Vdiag)
+  Oinv <- solve((Omega_hat + t(Omega_hat))/2)
+  H <- Vinv + kronecker(Oinv, crossprod(X))
+  b <- Vinv %*% alpha0 + kronecker(Oinv, t(X)) %*% y
+  alpha_post <- solve(H, b)
+
+  A_post <- matrix(as.vector(alpha_post), nrow = K, ncol = M, byrow = FALSE)
+  colnames(A_post) <- vars
+  A_post
+}
+```
+
+
+```{r olds}
+# estimate A by method on a given training set
+estimate_A_ols_old <- function(train_df, vars, p) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  solve(crossprod(X), crossprod(X, Y))
+}
+
+estimate_A_mn_post_old <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
   # build X,Y,y
   vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
   X <- vm$X; Y <- vm$Y; y <- vm$y
@@ -1299,6 +1344,7 @@ estimate_A_mn_post <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
   colnames(A_post) <- vars
   A_post
 }
+
 ```
 
 ```{r FUN whole process}
@@ -1307,7 +1353,7 @@ msfe_1step_expanding <- function(df_long, vars, p,
                                  train_end0  = as.Date("1994-12-31"),
                                  model_name = c("OLS", "Minnesota", "SOC", "Dummy Obs."),
                                  mn_hyper = list(a1 = 1, a2 = 0.5, a3 = 0.1),
-                                 soc_hyper = list(),
+                                 soc_hyper = list(tau = 1),
                                  dobs_hyper = list(tau = 1)) {
 
   df_long <- df_long %>% arrange(date) %>% filter(train_start <= date)
@@ -1381,16 +1427,32 @@ msfe_1step_expanding <- function(df_long, vars, p,
 
 ```
 
-```{r REG msfe}
-res_msfe <- msfe_1step_expanding(df_var_long, vars, p)
-df_se <- res_msfe$se
+```{r REG msfe different tau}
+msfe_table <- tibble()
+for (tau_loop in c(1:20)/10){
+  print(tau_loop)
+  res_msfe <- msfe_1step_expanding(df_var_long, vars, p, soc_hyper = list(tau = tau_loop), dobs_hyper = list(tau_loop))
+  msfe_table_loop <- mutate(res_msfe$msfe, tau = tau_loop)
+  msfe_table <- bind_rows(msfe_table, msfe_table_loop)
+}
+
+msfe_table %>% 
+  pivot_longer(cols = c(-var, -tau), names_to = "Model", values_to = "MSFE") %>% 
+  mutate(Model = str_remove(Model, "MSFE_")) %>% 
+  ggplot(mapping = aes(x = tau, y = MSFE, color = Model)) + 
+  geom_line()+
+  geom_point()+
+  facet_wrap(~var, scales = "free", ncol = 1)
+
+
 ```
+
+res_msfe <- msfe_1step_expanding(df_var_long, vars, p)
 
 ```{r EXP msfe}
 res_msfe$msfe %>% 
   gt_basic(title = "MSFE", decimals = 4)
 ```
-
 
 ```{r EXP plot se by var}
 df_se_long <- df_se %>%
@@ -1609,9 +1671,141 @@ $$
   に起因する **記法上の差**である。
 - 実装では、**どちらの規約を使うかを最初に決め、最後まで貫くことが必須**である。
 
+# 7変数ver
 
+```{r}
+# --- packages: 既存に加えて zoo は already, quantmod already ---
 
+# 四半期化ヘルパ：月次・日次でも四半期に落とす（デフォルトは四半期平均）
+to_qtr_zoo <- function(x, agg = c("mean", "last")) {
+  agg <- match.arg(agg)
+  z <- zoo::zoo(as.numeric(x), zoo::as.yearmon(zoo::index(x)))  # month index
+  # もし元が四半期や日次でも yearmon に落ちるので、年四半期へ集計できる
+  if (agg == "mean") return(aggregate(z, zoo::as.yearqtr, mean, na.rm = TRUE))
+  if (agg == "last") return(aggregate(z, zoo::as.yearqtr, function(v) tail(v, 1)))
+}
 
+# 7系列DL
+getSymbols(c("GDPC1","GDPDEF","FEDFUNDS","PCECC96","GPDIC1","HOANBS","COMPRNFB"), src="FRED")
+
+# 四半期系列（元が四半期でも「四半期へ強制」しておく）
+rgdp_q  <- to_qtr_zoo(GDPC1,    agg = "mean")
+def_q   <- to_qtr_zoo(GDPDEF,   agg = "mean")
+ff_q    <- to_qtr_zoo(FEDFUNDS, agg = "mean")  # 金利は四半期平均が自然
+c_q     <- to_qtr_zoo(PCECC96,  agg = "mean")
+i_q     <- to_qtr_zoo(GPDIC1,   agg = "mean")
+hours_q <- to_qtr_zoo(HOANBS,   agg = "mean")
+comp_q  <- to_qtr_zoo(COMPRNFB, agg = "mean")
+
+z_q <- na.omit(merge(rgdp_q, def_q, ff_q, c_q, i_q, hours_q, comp_q))
+colnames(z_q) <- c("RGDP","DEF","FF","RC","RI","HOURS","RCOMP")
+
+# 変換：あなたの既存方針に合わせる（log系は100*log、金利はlevel）
+df_var7 <- tibble(
+  date   = as.Date(as.yearqtr(index(z_q)), frac = 1),
+  lRGDP  = 100*log(as.numeric(z_q[,"RGDP"])),
+  lDEF   = 100*log(as.numeric(z_q[,"DEF"])),
+  FF     = as.numeric(z_q[,"FF"]),
+  lRC    = 100*log(as.numeric(z_q[,"RC"])),
+  lRI    = 100*log(as.numeric(z_q[,"RI"])),
+  lHOURS = 100*log(as.numeric(z_q[,"HOURS"])),
+  lRCOMP = 100*log(as.numeric(z_q[,"RCOMP"]))
+)
+
+# 期間（既存を踏襲）
+df_var_long <- df_var7 %>% filter(as.Date("1980-01-01") <= date, date <= as.Date("2019-12-31"))
+df_var      <- df_var7 %>% filter(as.Date("1995-01-01") <= date, date <= as.Date("2019-12-31"))
+
+vars7 <- c("lRGDP","lDEF","FF","lRC","lRI","lHOURS","lRCOMP")
+
+```
+
+```{r}
+var_1step_fc <- function(train_df, vars, p, A, add_const = TRUE) {
+  Ymat <- as.matrix(train_df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat); M <- length(vars)
+
+  hist <- Ymat[T_df:(T_df - p + 1), , drop = FALSE]  # rows: t, t-1, ..., t-p+1
+  x_no_const <- as.vector(t(hist))                   # lag1(vars) -> lag2(vars) -> ...
+  x <- if (add_const) c(1, x_no_const) else x_no_const
+  drop(x %*% A)
+}
+
+msfe_1step_expanding <- function(df_long, vars, p,
+                                 train_start = as.Date("1980-01-01"),
+                                 train_end0  = as.Date("1994-12-31"),
+                                 mn_hyper   = list(a1 = 1, a2 = 0.5, a3 = 0.1),
+                                 soc_hyper  = list(tau = 1),
+                                 dobs_hyper = list(tau = 1)) {
+
+  df_long <- df_long %>% arrange(date) %>% filter(train_start <= date)
+
+  end_dates <- df_long$date[df_long$date >= train_end0]
+  end_dates <- end_dates[end_dates <= (max(df_long$date) %m-% months(3))]
+
+  out <- vector("list", length(end_dates))
+
+  for (ii in seq_along(end_dates)) {
+    t_end <- end_dates[ii]
+    train <- df_long %>% filter(date <= t_end)
+    test_date <- t_end %m+% months(3)
+    test <- df_long %>% filter(date == test_date)
+
+    if (nrow(test) != 1) next
+    if (nrow(train) < (p + 10)) next
+
+    A_ols  <- estimate_A_ols(train, vars, p)
+    A_mn   <- do.call(estimate_A_mn_post, c(list(train_df=train, vars=vars, p=p), mn_hyper))
+    A_soc  <- do.call(estimate_A_soc,     c(list(train_df=train, vars=vars, p=p), soc_hyper))
+    A_dobs <- do.call(estimate_A_dobs,    c(list(train_df=train, vars=vars, p=p), dobs_hyper))
+
+    fc_ols  <- var_1step_fc(train, vars, p, A_ols)
+    fc_mn   <- var_1step_fc(train, vars, p, A_mn)
+    fc_soc  <- var_1step_fc(train, vars, p, A_soc)
+    fc_dobs <- var_1step_fc(train, vars, p, A_dobs)
+
+    y_true <- as.numeric(test[1, vars])
+
+    out[[ii]] <- tibble(
+      date = test_date,
+      var  = vars,
+      se_ols  = (y_true - fc_ols)^2,
+      se_mn   = (y_true - fc_mn)^2,
+      se_soc  = (y_true - fc_soc)^2,
+      se_dobs = (y_true - fc_dobs)^2
+    )
+  }
+
+  df_se <- bind_rows(out)
+
+  df_msfe <- df_se %>%
+    group_by(var) %>%
+    summarize(
+      MSFE_OLS       = mean(se_ols,  na.rm = TRUE),
+      MSFE_MN        = mean(se_mn,   na.rm = TRUE),
+      MSFE_SOC       = mean(se_soc,  na.rm = TRUE),
+      MSFE_DOBS      = mean(se_dobs, na.rm = TRUE),
+      RMSE_OLS       = sqrt(MSFE_OLS),
+      RMSE_MN        = sqrt(MSFE_MN),
+      RMSE_SOC       = sqrt(MSFE_SOC),
+      RMSE_DOBS      = sqrt(MSFE_DOBS),
+      .groups="drop"
+    )
+
+  list(se = df_se, msfe = df_msfe)
+}
+
+# 実行（7変数）
+p <- 5
+res_msfe7 <- msfe_1step_expanding(df_var_long, vars = vars7, p = p, dobs_hyper = list(tau = 0.1), soc_hyper = list(tau = 0.1))
+df_rmse7 <- res_msfe7$msfe
+
+```
+
+```{r}
+df_rmse7
+res_msfe$msfe
+```
 
 https://www.r-econometrics.com/timeseries/bvar/   
 
