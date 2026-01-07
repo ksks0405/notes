@@ -316,9 +316,17 @@ $$
 Omega_Mn <- summary(var_est)$covres
 ```
 
+```{r FUN gt function}
+gt_basic <- function(df, title = NULL, decimals = 2) {
+  gt::gt(df) %>%
+    gt::fmt_number(decimals = decimals) %>%
+    gt::tab_header(title = title)
+}
+```
+
 ```{r EXP minnesota sigma}
-print("Omega_Mn")
-as_tibble(Omega_Mn, rownames = " ") %>% gt() %>% fmt_number(decimals = 2)
+as_tibble(Omega_Mn, rownames = " ") %>%
+  gt_basic(title = "Omega (Minnesota Prior)", decimals = 2)
 ```
 
 ### Prior on coefficients
@@ -402,7 +410,7 @@ a_3^2 \sigma_1^2 & 0 & 0 & \cdots & 0 \\
 \end{bmatrix}
 $$
 
-以下は、Minnesota Prior $underline{\alpha}_\text{Mn}$と$\underline{V}_\text{Mn}$を設定するコード。
+以下は、Minnesota Prior $\underline{\alpha}_\text{Mn}$と$\underline{V}_\text{Mn}$を設定するコード。
 
 ```{r REG minnesota prior, class.source = 'fold-show'}
 ### hyperparamters
@@ -427,9 +435,9 @@ for (i in 1:M) {
   for (j in 1:M) {
     idx_j <- 1 + j + (0:(p-1)) * M # positions of variable j
     if (i == j) {
-      V_Mn_asigma[idx_j] <- a1
+      V_Mn_asigma[idx_j] <- a1^2
     } else {
-      V_Mn_asigma[idx_j] <- a2 * Omega_Mn[i,i] / Omega_Mn[j,j]
+      V_Mn_asigma[idx_j] <- a2^2 * Omega_Mn[i,i] / Omega_Mn[j,j]
     }
   }
   V_Mn_diag[(1 + (i-1)*K):(i*K)] <- V_Mn_r * V_Mn_asigma
@@ -491,14 +499,12 @@ V_Mn_unvec <- unvec(diag(V_Mn), M = M, p = p, add_const = 1, vars = vars)
 V_Mn_unvec_sorted <- V_Mn_unvec$A[coef_names_byvars, , drop = FALSE]
 ```
 
-以下の通り、$underline{\alpha}_\text{Mn}$はシンプル。
+以下の通り、$\underline{\alpha}_\text{Mn}$はシンプル。
 
 ```{r EXP alpha}
 A_Mn_unvec$A %>% 
   as_tibble(rownames = "Coef") %>% 
-  gt() %>% 
-  fmt_number(decimals = 2) %>% 
-  tab_header("A prior")
+  gt_basic(title = "A prior", decimals = 2)
 ```
 
 $\underline{V}_\text{Mn}$は、方程式によりスケールが異なる点がポイント（Natural conjugate priorだとこの形は実現不可）。
@@ -506,13 +512,13 @@ $\underline{V}_\text{Mn}$は、方程式によりスケールが異なる点が�
 ```{r EXP V}
 V_Mn_unvec_sorted %>% 
   as_tibble(rownames = "Coef") %>% 
-  gt() %>% 
-  fmt_number(decimals = 2) %>% 
-  tab_header("V prior (diag. element)")
-# print("diag(V)_vec")
-# diag(V_Mn)[1:16] %>% round(4)
-# diag(V_Mn)[17:32] %>% round(4)
-# diag(V_Mn)[33:48] %>% round(4)
+  gt_basic(title = "V prior (diag. element)", decimals = 2)
+
+rbind(diag(V_Mn)[1:16],diag(V_Mn)[17:32],diag(V_Mn)[33:48]) %>% 
+  `colnames<-`(coef_names_A) %>% 
+  as_tibble() %>% 
+  transmute(Block = c("V_1", "V_2", "V_3"), across(everything())) %>% 
+  gt_basic(title = "V prior (by the exact order)", decimals = 2)
 ```
 
 ## 事後分布
@@ -546,7 +552,6 @@ rownames(A_Mn_post) <- coef_names_A
 colnames(A_Mn_post) <- vars
 ```
 
-
 で与えられる。
 
 **Minnesota prior は、OLS 推定量を事前平均の方向へ縮小する役割を果たし、  特に高次ラグおよび他変数のラグに対して強い縮小を課すことで、高次元 VAR における過剰パラメータ化を防ぐ。**
@@ -559,15 +564,10 @@ tibble(
   `Minn. Prior` = as.vector(alpha_Mn), 
   Posterior = as.vector(alpha_Mn_post)) %>% 
   mutate(`Diff (abs - abs)` = abs(Posterior) - abs(OLS)) %>%
-  mutate(Coef = factor(Coef)) %>%
-  mutate(Coef = fct_relevel(Coef, 
-                            str_subset(levels(Coef), "^lRGDP"),
-                            str_subset(levels(Coef), "^lDEF"),
-                            str_subset(levels(Coef), "^FF"))) %>% 
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
   arrange(Coef) %>% 
-  gt(groupname_col = "Equation") %>% 
-  fmt_number(decimals = 2) %>% 
-  tab_header(title = "推計結果（点推定値；OLS v.s. Minnesota Prior）")
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（点推定値；OLS v.s. Minnesota Prior）", decimals = 2)
 ```
 
 ```{r EXP minnesota shrinkage}
@@ -691,6 +691,7 @@ $$
 N\!\left( 0,\; \underbrace{ \begin{bmatrix} \Sigma \otimes I_T & 0 \\ 0 & I \end{bmatrix} }_{\Omega} \right).
 \end{aligned}
 $$
+
 ### R コード
 
 ```{r REG minn dummy reg, class.source = 'fold-show'}
@@ -726,25 +727,194 @@ colnames(A_Mn_gls_dummy) <- vars
 rownames(A_Mn_gls_dummy) <- coef_names_A
 ```
 
-## sum-of-coefficients prior
+## Sum-of-coefficients prior
 
 *Loosely speaking, the objective of these additional priors is to reduce the importance of the determin- istic component implied by the VARs estimated conditioning on the initial observations (Sims, 1992a)* (GLP 2015, p 440)
 
 The setting follows Kilian and Lutkepohl (2016, pp159).
 
-```{r REG soc dummy}
-mu_socdum <- colMeans(df_var[(1:p) ,vars])
-tau_socdum <- 1
-Y_socdum <- rbind(Y, diag(mu_socdum)/tau_socdum)
-X_socdum <- rbind(X, 
-                  t(rbind(matrix(0, nrow = 1, ncol = M), kronecker(matrix(1, nrow = p, ncol = 1), diag(mu_socdum)/tau_socdum))))
-
-A_socdum <- solve(t(X_socdum) %*% X_socdum) %*% t(X_socdum) %*% Y_socdum
-rownames(A_socdum) <- coef_names_A  # X と同じ regressor 順序のはず
-colnames(A_socdum) <- vars
+```{r REG soc dummy, class.source='fold-show'}
+mu_soc <- colMeans(df_var[(1:p) ,vars])
+tau_soc <- 1
+Ydum_soc <- diag(mu_soc)/tau_soc
+Xdum_soc <- t(rbind(matrix(0, nrow = 1, ncol = M), kronecker(matrix(1, nrow = p, ncol = 1), diag(mu_soc)/tau_soc)))
 ```
 
+今回の例では、以下のようなダミーが設定される。
+
+- $Y \, (M \times K \, \text{or} \,3 \times 3)$
+
+```{r EXP soc dummy y}
+print(Ydum_soc)
+```
+
+- $X \, (M \times K \, \text{or} \,3 \times 16)$
+
+```{r EXP soc dummy x}
+print(Xdum_soc)
+```
+
+posterior は以下の通り。
+
+```{r REG soc dummy posterior, class.source='fold-show'}
+Y_soc <- rbind(Y, Ydum_soc)
+X_soc <- rbind(X, Xdum_soc)
+A_soc <- solve(t(X_soc) %*% X_soc) %*% t(X_soc) %*% Y_soc
+colnames(A_soc) <- vars
+```
+
+ルーティン化するため `estimate_A_soc` を定義（のちにも使用）
+
+```{r FUN soc dummy regression, class.source='fold-show'}
+estimate_A_soc <- function(train_df, vars, p, tau = 1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+
+  mu <- colMeans(train_df[1:p, vars, drop=FALSE])
+  Yd <- rbind(Y, diag(mu)/tau)
+  Xd <- rbind(X,
+              t(rbind(matrix(0, nrow=1, ncol=M),
+                      kronecker(matrix(1, nrow=p, ncol=1), diag(mu)/tau))))
+
+  A <- solve(crossprod(Xd), crossprod(Xd, Yd))
+  colnames(A) <- vars
+  A
+}
+```
+
+### $\tau$ の役割
+
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響小→**自己ラグの係数の和が1に近づく**
+
+- $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
+
+```{r REG soc dummy different tau, class.source='fold-show'}
+A_soc_bigtau <- estimate_A_soc(df_var, vars, p, tau = 10^4)
+A_soc_smalltau <- estimate_A_soc(df_var, vars, p, tau = 10^(-4))
+```
+
+```{r EXP soc dummy different tau}
+tibble(
+  Equation = rep(vars, each = K),
+  Coef = rep(coef_names_A, M),
+  `tau = 1 `= as.vector(A_soc),
+  `small tau`= as.vector(A_soc_smalltau),
+  `big tau`= as.vector(A_soc_bigtau),
+  OLS = as.vector(alpha_OLS)) %>% 
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
+  arrange(Coef) %>% 
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（SOC prior v.s. OLS）", decimals = 2) %>% 
+  tab_spanner(columns = c(3:5), label = "SOC prior")
+```
+
+## Innitial dummy observations prior
+
+（セットアップの解説）
+
+The setting follows Kilian and Lutkepohl (2016, pp159).
+
+```{r REG dobs dummy, class.source='fold-show'}
+mu_dobs <- colMeans(df_var[(1:p) ,vars])
+tau_dobs <- 1
+Ydum_dobs <- mu_dobs/tau_dobs
+Xdum_dobs <- c(1, rep(mu_dobs/tau_dobs, p))
+```
+
+今回の例では、以下のようなダミーが設定される。
+
+- $Y \, (M \times K \, \text{or} \,1 \times 3)$
+
+```{r EXP dobs dummy y}
+print(Ydum_dobs)
+```
+
+- $X \, (M \times K \, \text{or} \,1 \times 16)$
+
+```{r EXP dobs dummy x}
+print(Xdum_dobs)
+```
+
+posterior は以下の通り。
+
+```{r REG dobs dummy posterior, class.source='fold-show'}
+Y_dobs <- rbind(Y, Ydum_dobs)
+X_dobs <- rbind(X, Xdum_dobs)
+A_dobs <- solve(t(X_dobs) %*% X_dobs) %*% t(X_dobs) %*% Y_dobs
+colnames(A_dobs) <- vars
+```
+
+ルーティン化するため `estimate_A_dobs` を定義（のちにも使用）
+
+```{r FUN dobs dummy regression, class.source='fold-show'}
+estimate_A_dobs <- function(train_df, vars, p, tau = 1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X
+  Y <- vm$Y
+
+  M <- length(vars)
+  K <- 1 + M * p
+  TT <- nrow(Y)
+  if (TT < p) stop("Not enough observations after lag truncation for dobs prior.")
+
+  # KL dummy observations prior (dummy obs)
+  # use the first p observations *in Y* (i.e. after removing initial lags)
+  mu <- colMeans(train_df[1:p, vars, drop = FALSE])
+
+  Y_dobs <- rbind(Y, matrix(mu / tau, nrow = 1))
+  X_dobs <- rbind(X, matrix(c(1, rep(mu / tau, p)), nrow = 1))
+
+  A <- solve(crossprod(X_dobs), crossprod(X_dobs, Y_dobs))
+  colnames(A) <- vars
+  A
+}
+```
+
+### $\tau$ の役割
+
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響小→**自己ラグの係数の和が1に近づく**
+
+- $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
+
+```{r REG dobs dummy different tau, class.source='fold-show'}
+A_dobs_bigtau <- estimate_A_soc(df_var, vars, p, tau = 10^4)
+A_dobs_smalltau <- estimate_A_soc(df_var, vars, p, tau = 10^(-4))
+```
+
+```{r EXP dobs dummy different tau}
+tibble(
+  Equation = rep(vars, each = K),
+  Coef = rep(coef_names_A, M),
+  `tau = 1 `= as.vector(A_dobs),
+  `small tau`= as.vector(A_dobs_smalltau),
+  `big tau`= as.vector(A_dobs_bigtau),
+  OLS = as.vector(alpha_OLS)) %>% 
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
+  arrange(Coef) %>% 
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（Dummy Obs. prior v.s. OLS）", decimals = 2) %>% 
+  tab_spanner(columns = c(3:5), label = "Dummy Obs. prior")
+```
+
+## パフォーマンス比較 （OLS, Minnesota, SOC, Dummy Obs.)
+
+```{r SET moromoro}
+model_name <- c("OLS", "Minnesota", "SOC", "Dummy Obs.")
+col_map <- c("#000000", "#1f77b4", "#ff7f0e", "#2ca02c","red")
+names(col_map) <- c("Actual", model_name)
+col_map_se <- col_map[c("OLS", "Minnesota", "SOC")]
+
+lt_map <- c("solid", "solid", "dashed", "dotdash","dotdash")
+names(lt_map) <- c("Actual", model_name)
+lw_map <- c(1.2, 0.9, 0.9, 0.9, 0.9)
+names(lw_map) <- c("Actual", model_name)
+```
+
+### フィットと先行きのパス
+
 ```{r FUN make forecast}
+# forecastを計算
 make_var_fit_forecast <- function(df, date_col = "date", vars, p, A, h = 40, add_const = TRUE) {
   stopifnot(all(c(date_col, vars) %in% names(df)))
   stopifnot(is.matrix(A))
@@ -801,19 +971,8 @@ make_var_fit_forecast <- function(df, date_col = "date", vars, p, A, h = 40, add
     )
   )
 }
-```
 
-```{r REG forecast}
-h <- 40 # h = 1000でもSOCは収束しない（ダラダラと下がり続ける）
-
-res_ols  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_OLS,     h = h)
-res_mn   <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_Mn_post, h = h)
-res_soc  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_socdum,  h = h)
-```
-
-```{r}
 # 1) 各手法の「fitted+forecast」を1本に結合した series を作る
-
 mk_method_series <- function(res, method, vars) {
   # in-sample fitted: date, var_fitted
   df_fit <- res$in_sample |>
@@ -831,52 +990,44 @@ mk_method_series <- function(res, method, vars) {
   bind_rows(df_fit, df_fc) |>
     mutate(method = method)
 }
+```
+
+#### レベル
+
+```{r REG forecast}
+h <- 40 # h = 1000でもSOCは収束しない（ダラダラと下がり続ける）
+
+res_ols  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_OLS,     h = h)
+res_mn   <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_Mn_post, h = h)
+res_soc  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_soc,  h = h)
+res_dobs  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_dobs,  h = h)
 
 df_actual <- df_var |>
   dplyr::select(date, all_of(vars)) |>
   pivot_longer(-date, names_to = "var", values_to = "value") |>
   mutate(method = "Actual")
 
-df_ols_series <- mk_method_series(res_ols, "OLS", vars)
-df_mn_series  <- mk_method_series(res_mn,  "Minnesota", vars)
-df_soc_series <- mk_method_series(res_soc, "SOC", vars)
+df_ols_series <- mk_method_series(res_ols, model_name[1], vars)
+df_mn_series  <- mk_method_series(res_mn,  model_name[2], vars)
+df_soc_series <- mk_method_series(res_soc, model_name[3], vars)
+df_dobs_series <- mk_method_series(res_dobs, model_name[4], vars)
 
-df_plot4 <- bind_rows(
+df_fcst_all <- bind_rows(
   df_actual,
   df_ols_series,
   df_mn_series,
-  df_soc_series
+  df_soc_series,
+  df_dobs_series
 ) |>
   mutate(
     var = factor(var, levels = vars),
-    method = factor(method, levels = c("Actual", "OLS", "Minnesota", "SOC"))
+    method = factor(method, levels = c("Actual", model_name))
   )
 ```
 
 ```{r EXP fit in level}
-col_map <- c(
-  "Actual"     = "#000000", # 黒
-  "OLS"        = "#1f77b4", # 青
-  "Minnesota"  = "#ff7f0e", # オレンジ
-  "SOC"        = "#2ca02c"  # 緑
-)
-
-lt_map <- c(
-  "Actual"     = "solid",
-  "OLS"        = "solid",
-  "Minnesota"  = "dashed",
-  "SOC"        = "dotdash"
-)
-
-lw_map <- c(
-  "Actual"     = 1.2,
-  "OLS"        = 0.9,
-  "Minnesota"  = 0.9,
-  "SOC"        = 0.9
-)
-
-plots_3 <- lapply(levels(df_plot4$var), function(v) {
-  dfi <- df_plot4 |> dplyr::filter(var == v)
+plots_3 <- lapply(levels(df_fcst_all$var), function(v) {
+  dfi <- df_fcst_all |> dplyr::filter(var == v)
 
   ggplot(dfi, aes(x = date, y = value, color = method, linetype = method, linewidth = method)) +
     geom_line() +
@@ -892,72 +1043,11 @@ plots_3 <- lapply(levels(df_plot4$var), function(v) {
 })
 
 for (g in plots_3) print(g)
-
 ```
 
-最大固有値の計算
+#### 差分
 
-```{r REG max eig}
-# Max eigenvalue (spectral radius) of a VAR(p) companion matrix
-# Input:
-#   A  : K x M matrix (rows = regressors [const, lags...], cols = equations)
-#        This matches your A_OLS, A_Mn_post, A_socdum style.
-#   p  : lag order
-#   M  : number of variables
-#   add_const : whether the first row of A is const
-# Output:
-#   list(rho = max |lambda|, eig = eigenvalues, companion = F)
-
-var_max_eig <- function(A, p, M, add_const = TRUE, return_companion = FALSE) {
-  A <- as.matrix(A)
-  K_expected <- (if (add_const) 1L else 0L) + M * p
-  stopifnot(nrow(A) == K_expected, ncol(A) == M)
-
-  # --- Extract lag coefficient matrices A1..Ap as M x M ---
-  # Your A is K x M with rows: const, (lag1 vars), ..., (lagp vars)
-  # Each lag block in A is M rows (vars), M cols (equations) => transpose to (equations x vars) = M x M.
-  A_lags <- vector("list", p)
-  for (r in 1:p) {
-    row_start <- (if (add_const) 2L else 1L) + (r - 1L) * M
-    row_end   <- row_start + M - 1L
-    B <- A[row_start:row_end, , drop = FALSE]  # rows: vars, cols: equations
-    A_lags[[r]] <- t(B)                        # rows: equations, cols: vars  => M x M
-  }
-
-  # --- Build companion matrix F of size (Mp) x (Mp) ---
-  Mp <- M * p
-  F <- matrix(0, nrow = Mp, ncol = Mp)
-
-  # top block row: [A1 A2 ... Ap]
-  F[1:M, 1:Mp] <- do.call(cbind, A_lags)
-
-  # subdiagonal identity blocks
-  if (p >= 2) {
-    F[(M + 1):Mp, 1:(Mp - M)] <- diag(Mp - M)
-  }
-
-  # --- Eigenvalues and spectral radius ---
-  eigvals <- eigen(F, only.values = TRUE)$values
-  rho <- max(Mod(eigvals))
-
-  out <- list(rho = rho, eig = eigvals)
-  if (return_companion) out$companion <- F
-  out
-}
-
-# just the max |eig|
-var_spectral_radius <- function(A, p, M, add_const = TRUE) {
-  var_max_eig(A, p = p, M = M, add_const = add_const)$rho
-}
-
-# Example:
-rho_ols <- var_spectral_radius(A_OLS, p = p, M = M, add_const = TRUE)
-rho_mn  <- var_spectral_radius(A_Mn_post, p = p, M = M, add_const = TRUE)
-rho_soc <- var_spectral_radius(A_socdum, p = p, M = M, add_const = TRUE)
-print(c(OLS = rho_ols, Minnesota = rho_mn, SOC = rho_soc))
-```
-
-```{r }
+```{r FUN for difference}
 # 3つのフィットの R^2 を計算（GDP/物価=階差、金利=レベル）
 
 # R^2 helper（NAは落とす）
@@ -1019,7 +1109,9 @@ make_r2_table <- function(df_var, vars,
 
   dplyr::bind_rows(out)
 }
+```
 
+```{r REG rsquare}
 r2_tbl <- make_r2_table(
   df_var = df_var,
   vars   = vars,
@@ -1030,9 +1122,9 @@ r2_tbl <- make_r2_table(
 ```
 
 ```{r EXP fit in diff}
-diff_vars <- intersect(c("lRGDP", "lDEF"), levels(df_plot4$var))
+diff_vars <- intersect(c("lRGDP", "lDEF"), levels(df_fcst_all$var))
 
-df_plot4_trans <- df_plot4 |>
+df_fcst_all_trans <- df_fcst_all |>
   dplyr::arrange(var, method, date) |>
   dplyr::group_by(var, method) |>
   dplyr::mutate(
@@ -1048,8 +1140,8 @@ df_plot4_trans <- df_plot4 |>
   dplyr::select(-value_trans)
 
 # 3枚（変数ごと）プロット
-plots_3_trans <- lapply(levels(df_plot4_trans$var), function(v) {
-  dfi <- df_plot4_trans |> dplyr::filter(var == v)
+plots_3_trans <- lapply(levels(df_fcst_all_trans$var), function(v) {
+  dfi <- df_fcst_all_trans |> dplyr::filter(var == v)
 
   ggplot(dfi, aes(x = date, y = value, color = method, linetype = method, linewidth = method)) +
     geom_line() +
@@ -1069,232 +1161,266 @@ for (g in plots_3_trans) print(g)
 
 ```
 
-```{r, eval = F}
-# 1Q ahead MSFE (point forecast) for OLS / Minnesota / SOC
-# using df_var_long (1980-01-01 - 2019-12-31)
+#### 長期予測値と最大固有値
 
-# ---- prerequisites: you already have make_varmat_KK() defined ----
-# make_varmat_KK(df, vars, p, add_const = TRUE)
+SOCを除く各priorでは、長期予測値が波を打ちながら大きく変動する→Sims (1992) の「初期値問題」（Dummy Obs. でも初期値問題は緩和されるはずだが…）
 
-# ---- helper: build x_t from last p actual observations ----
-make_x_lastp <- function(Ymat, p, add_const = TRUE) {
-  # Ymat: T x M (actual levels), last row is time t
-  stopifnot(nrow(Ymat) >= p + 1)
-  lag_block <- Ymat[(nrow(Ymat)):(nrow(Ymat) - p + 1), , drop = FALSE] # rows: t, t-1,... (latest first)
-  # need rows = (t, t-1, ..., t-p+1) corresponds to (t, ..., t-p+1)
-  # but regressor uses (t, ..., t-p+1) as lags for forecasting y_{t+1}
-  x_no_const <- as.vector(t(lag_block))  # lag1(vars) -> lag2 -> ... (KK Xと一致)
-  if (add_const) c(1, x_no_const) else x_no_const
-}
+なお、収束の速さは最大固有値からわかる
 
-# ---- estimate OLS A and residual covariance Omega_hat ----
-estimate_ols_A_Omega <- function(df_train, vars, p, add_const = TRUE) {
-  vm <- make_varmat_KK(df_train, vars = vars, p = p, add_const = add_const)
-  Y <- vm$Y; X <- vm$X
+```{r FUN max eig}
+# Max eigenvalue (spectral radius) of a VAR(p) companion matrix
+# Input:
+#   A  : K x M matrix (rows = regressors [const, lags...], cols = equations)
+#        This matches your A_OLS, A_Mn_post, A_soc style.
+#   p  : lag order
+#   M  : number of variables
+#   add_const : whether the first row of A is const
+# Output:
+#   list(rho = max |lambda|, eig = eigenvalues, companion = F)
 
-  # OLS coefficient
-  A_OLS <- solve(t(X) %*% X, t(X) %*% Y)  # K x M
+var_max_eig <- function(A, p, M, add_const = TRUE, return_companion = FALSE) {
+  A <- as.matrix(A)
+  K_expected <- (if (add_const) 1L else 0L) + M * p
+  stopifnot(nrow(A) == K_expected, ncol(A) == M)
 
-  # residual covariance (unbiased-ish): U'U / (T_eff - K)
-  U <- Y - X %*% A_OLS
-  T_eff <- nrow(Y)
-  K <- ncol(X)
-  Omega_hat <- crossprod(U) / (T_eff - K)
-
-  list(A = A_OLS, Omega = Omega_hat)
-}
-
-# ---- Minnesota posterior mean A (Sigma fixed at Omega_hat) ----
-estimate_minnesota_A <- function(df_train, vars, p, a1 = 1, a2 = 0.5, a3 = 0.1, add_const = TRUE) {
-
-  ols <- estimate_ols_A_Omega(df_train, vars = vars, p = p, add_const = add_const)
-  Omega_Mn <- ols$Omega
-
-  M <- length(vars)
-  K <- (if (add_const) 1L else 0L) + M * p
-
-  # --- build X, y in KK vec form (only needed for posterior mean)
-  vm <- make_varmat_KK(df_train, vars = vars, p = p, add_const = add_const)
-  X <- vm$X
-  y <- vm$y
-
-  # --- prior mean alpha_Mn (KM x 1)
-  alpha_Mn <- matrix(0, M * K, 1)
-  # positions of own first lag in each equation under your stacking:
-  # equation i corresponds to block (i-1)*K + 1..K, and within block:
-  # const at 1, lag1 vars are at 2..(M+1), so own-lag1 is at (1 + i)
-  for (i in 1:M) {
-    alpha_Mn[(i - 1) * K + (1 + i), 1] <- 1
+  # --- Extract lag coefficient matrices A1..Ap as M x M ---
+  # Your A is K x M with rows: const, (lag1 vars), ..., (lagp vars)
+  # Each lag block in A is M rows (vars), M cols (equations) => transpose to (equations x vars) = M x M.
+  A_lags <- vector("list", p)
+  for (r in 1:p) {
+    row_start <- (if (add_const) 2L else 1L) + (r - 1L) * M
+    row_end   <- row_start + M - 1L
+    B <- A[row_start:row_end, , drop = FALSE]  # rows: vars, cols: equations
+    A_lags[[r]] <- t(B)                        # rows: equations, cols: vars  => M x M
   }
 
-  # --- prior variance diag V_Mn (KM x KM)
-  V_Mn_diag <- rep(NA_real_, M * K)
-  V_Mn_r <- c(1, rep((1:p)^(-2), each = M)) # length K
+  # --- Build companion matrix F of size (Mp) x (Mp) ---
+  Mp <- M * p
+  F <- matrix(0, nrow = Mp, ncol = Mp)
+
+  # top block row: [A1 A2 ... Ap]
+  F[1:M, 1:Mp] <- do.call(cbind, A_lags)
+
+  # subdiagonal identity blocks
+  if (p >= 2) {
+    F[(M + 1):Mp, 1:(Mp - M)] <- diag(Mp - M)
+  }
+
+  # --- Eigenvalues and spectral radius ---
+  eigvals <- eigen(F, only.values = TRUE)$values
+  rho <- max(Mod(eigvals))
+
+  out <- list(rho = rho, eig = eigvals)
+  if (return_companion) out$companion <- F
+  out
+}
+
+# just the max |eig|
+var_spectral_radius <- function(A, p, M, add_const = TRUE) {
+  var_max_eig(A, p = p, M = M, add_const = add_const)$rho
+}
+```
+
+```{r REG max eig}
+# Example:
+rho_ols <- var_spectral_radius(A_OLS, p = p, M = M, add_const = TRUE)
+rho_mn  <- var_spectral_radius(A_Mn_post, p = p, M = M, add_const = TRUE)
+rho_soc <- var_spectral_radius(A_soc, p = p, M = M, add_const = TRUE)
+rho_dobs <- var_spectral_radius(A_dobs, p = p, M = M, add_const = TRUE)
+```
+
+
+```{r EXP max eig}
+print(c(rho_ols, rho_mn, rho_soc, rho_dobs) %>% `names<-`(model_name))
+```
+
+### Out-of-sample 予測
+
+```{r FUN regression functions}
+#  1-step forecast given A and last p actuals 
+var_1step_fc <- function(train_df, vars, p, A, add_const = TRUE) {
+  Ymat <- as.matrix(train_df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat); M <- length(vars)
+
+  # last p obs: rows = (t, t-1, ..., t-p+1)
+  hist <- Ymat[T_df:(T_df - p + 1), , drop = FALSE]
+
+  x_no_const <- as.vector(t(hist))   # lag1 vars -> lag2 vars -> ...
+  x <- if (add_const) c(1, x_no_const) else x_no_const
+
+  drop(x %*% A)  # length M
+}
+
+# estimate A by method on a given training set
+estimate_A_ols <- function(train_df, vars, p) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  solve(crossprod(X), crossprod(X, Y))
+}
+
+estimate_A_mn_post <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
+  # build X,Y,y
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y; y <- vm$y
+  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+
+  # OLS Sigma hat (window-specific!)
+  A_ols <- solve(crossprod(X), crossprod(X, Y))
+  U <- Y - X %*% A_ols
+  Omega_hat <- crossprod(U) / (TT - K)
+
+  # Minnesota prior mean alpha0 and Vdiag (あなたのロジックに合わせて作る)
+  alpha0 <- matrix(0, M*K, 1)
+  alpha0[c(0*K+1+1, 1*K+2+1, 2*K+3+1)] <- 1
+
+  # IMPORTANT: a^2 が正しい（ここは直しておくのが筋）
+  Vdiag <- rep(NA_real_, M*K)
+  V_r <- c(1, rep((1:p)^(-2), each = M))
 
   for (i in 1:M) {
-    V_Mn_asigma <- rep(NA_real_, K)
-
-    # constant
-    V_Mn_asigma[1] <- a3 * Omega_Mn[i, i]
-
-    # lag blocks
+    tmp <- rep(NA_real_, K)
+    tmp[1] <- (a3^2) * Omega_hat[i,i]
     for (j in 1:M) {
-      idx_j <- 1 + j + (0:(p - 1)) * M
-      if (i == j) {
-        V_Mn_asigma[idx_j] <- a1
-      } else {
-        V_Mn_asigma[idx_j] <- a2 * Omega_Mn[i, i] / Omega_Mn[j, j]
-      }
+      idx_j <- 1 + j + (0:(p-1))*M
+      if (i == j) tmp[idx_j] <- (a1^2)
+      else        tmp[idx_j] <- (a2^2) * (Omega_hat[i,i]/Omega_hat[j,j])
     }
-
-    V_Mn_diag[(1 + (i - 1) * K):(i * K)] <- V_Mn_r * V_Mn_asigma
+    Vdiag[(1+(i-1)*K):(i*K)] <- V_r * tmp
   }
-  V_Mn <- diag(V_Mn_diag)
 
-  # posterior mean: alpha_post = V_post * (V^-1 alpha + (Sigma^-1 kron X') y)
-  V_post <- solve(solve(V_Mn) + kronecker(solve(Omega_Mn), t(X) %*% X))
-  alpha_post <- V_post %*% (solve(V_Mn) %*% alpha_Mn + kronecker(solve(Omega_Mn), t(X)) %*% y)
+  # posterior mean via solving linear system (avoid explicit inverses)
+  Vinv <- diag(1/Vdiag)
+  Oinv <- solve((Omega_hat + t(Omega_hat))/2)  # 必要なら jitter 版へ
+  H <- Vinv + kronecker(Oinv, crossprod(X))
+  b <- Vinv %*% alpha0 + kronecker(Oinv, t(X)) %*% y
+  alpha_post <- solve(H, b)
 
   A_post <- matrix(as.vector(alpha_post), nrow = K, ncol = M, byrow = FALSE)
   colnames(A_post) <- vars
   A_post
 }
+```
 
-# ---- SOC dummy A (Kilian-Lutkepohl style dummy) ----
-estimate_soc_A <- function(df_train, vars, p, tau_socdum = 1, add_const = TRUE) {
-  vm <- make_varmat_KK(df_train, vars = vars, p = p, add_const = add_const)
-  Y <- vm$Y
-  X <- vm$X
+```{r FUN whole process}
+msfe_1step_expanding <- function(df_long, vars, p,
+                                 train_start = as.Date("1980-01-01"),
+                                 train_end0  = as.Date("1994-12-31"),
+                                 model_name = c("OLS", "Minnesota", "SOC", "Dummy Obs."),
+                                 mn_hyper = list(a1 = 1, a2 = 0.5, a3 = 0.1),
+                                 soc_hyper = list(),
+                                 dobs_hyper = list(tau = 1)) {
 
-  M <- length(vars)
-  K <- ncol(X)
+  df_long <- df_long %>% arrange(date) %>% filter(train_start <= date)
 
-  # you used mu = colMeans(Y[(1:p),]) in your code (keep it)
-  mu_socdum <- colMeans(Y[(1:p), , drop = FALSE])
+  # expanding end dates: from train_end0 to last-1quarter
+  end_dates <- df_long$date[df_long$date >= train_end0]
+  end_dates <- end_dates[end_dates <= (max(df_long$date) %m-% months(3))]
 
-  Y_socdum <- rbind(Y, diag(mu_socdum) / tau_socdum)
+  out <- vector("list", length(end_dates))
 
-  X_socdum <- rbind(
-    X,
-    t(rbind(
-      matrix(0, nrow = 1, ncol = M),
-      kronecker(matrix(1, nrow = p, ncol = 1), diag(mu_socdum) / tau_socdum)
-    ))
-  )
+  for (ii in seq_along(end_dates)) {
+    t_end <- end_dates[ii]
 
-  A_soc <- solve(t(X_socdum) %*% X_socdum, t(X_socdum) %*% Y_socdum) # K x M
-  colnames(A_soc) <- vars
-  A_soc
-}
+    train <- df_long %>% filter(date <= t_end)
+    test_date <- t_end %m+% months(3)
+    test <- df_long %>% filter(date == test_date)
 
-# ---- main: rolling/expanding 1-step forecast MSFE ----
-msfe_1q_ahead <- function(df_var_long, vars, p,
-                         start_date = as.Date("1995-01-01"),
-                         end_date   = as.Date("2019-12-31"),
-                         add_const = TRUE,
-                         a1 = 1, a2 = 0.5, a3 = 0.1,
-                         tau_socdum = 1) {
+    if (nrow(test) != 1) next
+    if (nrow(train) < (p + 5)) next  # safety
 
-  df <- df_var_long |>
-    dplyr::filter(start_date <= .data$date, .data$date <= end_date) |>
-    dplyr::arrange(.data$date)
+    # --- estimate A ---
+    A_ols  <- estimate_A_ols(train, vars, p)
 
-  stopifnot(all(c("date", vars) %in% names(df)))
-
-  Yall <- as.matrix(df[, vars, drop = FALSE])
-  T_all <- nrow(Yall)
-  M <- length(vars)
-  K <- (if (add_const) 1L else 0L) + M * p
-
-  # minimum training length so that (X'X) is invertible comfortably
-  # effective obs = T_train - p must be > K
-  min_T_train <- p + K + 1L
-  if (T_all < min_T_train + 1L) stop("Not enough data for rolling 1-step forecasts.")
-
-  # t indexes end of training sample; we forecast t+1
-  t_start <- min_T_train
-  t_end   <- T_all - 1L
-
-  errs <- vector("list", length = t_end - t_start + 1L)
-  kk <- 1L
-
-  for (t in t_start:t_end) {
-    df_train <- df[1:t, , drop = FALSE]
-    Y_train  <- Yall[1:t, , drop = FALSE]
-
-    # x_t built from last p actual observations up to time t
-    x_t <- make_x_lastp(Y_train, p = p, add_const = add_const)  # length K
-
-    # --- estimate A's on df_train ---
-    ols <- estimate_ols_A_Omega(df_train, vars = vars, p = p, add_const = add_const)
-    A_OLS <- ols$A
-    A_MN  <- estimate_minnesota_A(df_train, vars = vars, p = p, a1 = a1, a2 = a2, a3 = a3, add_const = add_const)
-    A_SOC <- estimate_soc_A(df_train, vars = vars, p = p, tau_socdum = tau_socdum, add_const = add_const)
-
-    # --- 1-step point forecasts for y_{t+1} ---
-    fc_ols <- as.numeric(x_t %*% A_OLS)
-    fc_mn  <- as.numeric(x_t %*% A_MN)
-    fc_soc <- as.numeric(x_t %*% A_SOC)
-
-    y_next <- Yall[t + 1L, ]
-
-    errs[[kk]] <- tibble::tibble(
-      date = df$date[t + 1L],
-      var  = vars,
-      e_OLS = y_next - fc_ols,
-      e_Minnesota = y_next - fc_mn,
-      e_SOC = y_next - fc_soc
+    A_mn   <- do.call(
+      estimate_A_mn_post,
+      c(list(train_df = train, vars = vars, p = p), mn_hyper)
     )
-    kk <- kk + 1L
+
+    A_soc  <- do.call(
+      estimate_A_soc,
+      c(list(train_df = train, vars = vars, p = p), soc_hyper)
+    )
+
+    A_dobs <- do.call(
+      estimate_A_dobs,
+      c(list(train_df = train, vars = vars, p = p), dobs_hyper)
+    )
+
+    # --- 1-step point forecast ---
+    fc_ols  <- var_1step_fc(train, vars, p, A_ols)
+    fc_mn   <- var_1step_fc(train, vars, p, A_mn)
+    fc_soc  <- var_1step_fc(train, vars, p, A_soc)
+    fc_dobs <- var_1step_fc(train, vars, p, A_dobs)
+
+    y_true <- as.numeric(test[1, vars])
+
+    out[[ii]] <- tibble(
+      date   = test_date,
+      var    = vars,
+      se_ols  = (y_true - fc_ols)^2,
+      se_mn   = (y_true - fc_mn)^2,
+      se_soc  = (y_true - fc_soc)^2,
+      se_dobs = (y_true - fc_dobs)^2
+    )
   }
 
-  df_err <- dplyr::bind_rows(errs)
+  df_se <- bind_rows(out)
 
-  # MSFE by var & method
-  msfe_tbl <- df_err |>
-    dplyr::mutate(
-      se_OLS = e_OLS^2,
-      se_Minnesota = e_Minnesota^2,
-      se_SOC = e_SOC^2
-    ) |>
-    dplyr::group_by(var) |>
-    dplyr::summarise(
-      MSFE_OLS = mean(se_OLS, na.rm = TRUE),
-      MSFE_Minnesota = mean(se_Minnesota, na.rm = TRUE),
-      MSFE_SOC = mean(se_SOC, na.rm = TRUE),
+  df_msfe <- df_se %>%
+    group_by(var) %>%
+    summarize(
+      MSFE_OLS        = mean(se_ols,  na.rm = TRUE),
+      MSFE_Minnesota  = mean(se_mn,   na.rm = TRUE),
+      MSFE_SOC        = mean(se_soc,  na.rm = TRUE),
+      MSFE_DummyObs   = mean(se_dobs, na.rm = TRUE),
       .groups = "drop"
     )
 
-  # (optional) overall average across vars (simple mean of MSFE across vars)
-  msfe_overall <- tibble::tibble(
-    MSFE_OLS = mean(msfe_tbl$MSFE_OLS, na.rm = TRUE),
-    MSFE_Minnesota = mean(msfe_tbl$MSFE_Minnesota, na.rm = TRUE),
-    MSFE_SOC = mean(msfe_tbl$MSFE_SOC, na.rm = TRUE)
-  )
-
-  list(msfe_by_var = msfe_tbl, msfe_overall = msfe_overall, errors = df_err)
+  list(model_name = model_name, se = df_se, msfe = df_msfe)
 }
-
-# run
-
-p <- 5
-
-res_msfe <- msfe_1q_ahead(
-  df_var_long = df_var_long,
-  vars = vars,
-  p = p,
-  start_date = as.Date("1995-01-01"),
-  end_date   = as.Date("2019-12-31"),
-  a1 = 1, a2 = 0.5, a3 = 0.1,
-  tau_socdum = 1
-)
-
-res_msfe$msfe_by_var
-res_msfe$msfe_overall
 
 ```
 
+```{r REG msfe}
+res_msfe <- msfe_1step_expanding(df_var_long, vars, p)
+df_se <- res_msfe$se
+```
 
+```{r EXP msfe}
+res_msfe$msfe %>% 
+  gt_basic(title = "MSFE", decimals = 4)
+```
+
+
+```{r EXP plot se by var}
+df_se_long <- df_se %>%
+  pivot_longer(
+    cols = starts_with("se_"),
+    names_to = "method",
+    values_to = "se"
+  ) %>%
+  mutate(
+    method = recode(method,
+                    se_ols = "OLS",
+                    se_mn  = "Minnesota",
+                    se_soc = "SOC",
+                    se_dobs = "Dummy Obs."),
+    method = factor(method, levels = model_name),
+    var    = factor(var, levels = vars)
+  )
+
+ggplot(df_se_long, aes(x = date, y = se, color = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.9) +
+  facet_wrap(~ var, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = col_map_se) +
+  labs(
+    title = "1-quarter-ahead Squared Error (SE) over time",
+    x = NULL, y = "Squared error",
+    color = ""
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
 
 ## Natural Conjugate Prior
 
@@ -1492,171 +1618,3 @@ https://www.r-econometrics.com/timeseries/bvar/
 T: 73 samples: 76 terms (1960Q1-1978Q4) - 2 lags - 1 dlog
 p: 2 lags
 k: 3 vars (invest, income, cons)
-
-
-<!-- ```{r setup} -->
-<!-- library(bvartools) -->
-<!-- data("e1") -->
-<!-- e1 <- diff(log(e1)) # Calculate first-log-differences -->
-<!-- e1 <- window(e1, end = c(1978, 4)) # Reduce nobs -->
-<!-- e1 <- e1 * 100 # Rescale data -->
-<!-- plot(e1) # Plot the series -->
-<!-- data <- gen_var(e1, p = 2, deterministic = "const") -->
-<!-- ``` -->
-
-
-<!-- $$ -->
-<!-- \text{Let }Y = ( 3 \times 73)\text{, } X = (7 \times 73).\\ -->
-<!-- A_{freq} = YX^{'}(XX^{'})^{-1}. -->
-<!-- $$ -->
-
-<!-- $$ -->
-<!-- \text{Let }Y^* = ( 1 \times 219)\text{, } X^* = I_M \otimes X.\\ -->
-<!-- vec(A_{freq}) = vec(Y){vec(X)}^{'}[vec(X){vec(X)}^{'}]^{-1}, where\\ -->
-<!-- $$ -->
-
-<!-- ```{r ols} -->
-<!-- ### A -->
-<!-- y <- t(data$data$Y) # K * T = 3 * 73 -->
-<!-- x <- t(data$data$Z) # (K*p)+1 * T = 7 * 73 -->
-<!-- A_freq <- tcrossprod(y, x) %*% solve(tcrossprod(x)) # K * (K*p)+1 = 3 * 7 -->
-<!-- A_freq_mine <-  solve(x %*% t(x)) %*% (x %*% t(y)) # K * (K*p)+1 = 3 * 7 -->
-
-<!-- ### A (vec expression) chatGPT -->
-<!-- my_vec <- function(mat){ret <- matrix(mat)} -->
-<!-- y_vec <- t(my_vec(y)) #  1 * (T*K) = 1 * 219 -->
-<!-- x_vec <- kronecker(x, diag(1,3)) # {K * K} kron {(K*p)+1 * T} = 219 * 21 -->
-<!-- A_freq_vec <- (y_vec %*% t(x_vec))  %*% solve(x_vec %*% t(x_vec)) # 1 * 21 -->
-<!-- # y_vec_mine <- my_vec(t(y)) # (T*K) * 1 = 219 * 1 -->
-<!-- # x_vec_mine <- kronecker(diag(1,3),t(x)) # {K * K} kron {(K*p)+1 * T} = 21 * 219 -->
-<!-- # A_freq_vec_mine <- solve(t(x_vec) %*% x_vec) %*% (t(x_vec) %*% y_vec) # 21 * 1 -->
-
-
-<!-- ### U -->
-<!-- u_freq <- y - A_freq %*% x # K * T = 3 * 73 -->
-<!-- u_sigma_freq <- tcrossprod(u_freq) / (ncol(y) - nrow(x)) # K * K = 3 * 3 -->
-
-<!-- # Reset random number generator for reproducibility -->
-<!-- set.seed(1234567) -->
-
-<!-- iter <- 30000 # Number of iterations of the Gibbs sampler -->
-<!-- burnin <- 15000 # Number of burn-in draws -->
-<!-- store <- iter - burnin -->
-
-<!-- tt <- ncol(y) # Number of observations -->
-<!-- k <- nrow(y) # Number of endogenous variables -->
-<!-- m <- k * nrow(x) # Number of estimated coefficients -->
-<!-- ``` -->
-
-<!-- ```{r bayesian setup} -->
-<!-- # Reset random number generator for reproducibility -->
-<!-- set.seed(1234567) -->
-
-<!-- iter <- 30000 # Number of iterations of the Gibbs sampler -->
-<!-- burnin <- 15000 # Number of burn-in draws -->
-<!-- store <- iter - burnin -->
-
-<!-- tt <- ncol(y) # Number of observations -->
-<!-- k <- nrow(y) # Number of endogenous variables -->
-<!-- m <- k * nrow(x) # Number of estimated coefficients -->
-<!-- ``` -->
-
-<!-- ```{r bayesian prior} -->
-<!-- a_mu_prior <- matrix(0, m) # Vector of prior parameter means -->
-<!-- a_v_i_prior <- diag(1, m) # Inverse of the prior covariance matrix -->
-
-<!-- u_sigma_df_prior <- 6 # Prior degrees of freedom -->
-<!-- u_sigma_scale_prior <- diag(1, k) # Prior covariance matrix -->
-<!-- u_sigma_df_post <- tt + u_sigma_df_prior # Posterior degrees of freedom -->
-
-<!-- ``` -->
-
-<!-- ```{r Gibbs} -->
-<!-- # Data containers for posterior draws -->
-<!-- # str_lab <- expand.grid(v2 = colnames(A_freq), v1 = rownames(A_freq)) %>%  -->
-<!-- #   with(., paste(v1, v2, sep = "_")) -->
-<!-- str_y <- rownames(A_freq) -->
-<!-- str_x <- colnames(A_freq) -->
-<!-- str_lab <- outer(str_y, str_x, paste, sep = "_") %>%  -->
-<!--   as.vector() -->
-<!-- draws_a <- matrix(NA, m, store) %>%  -->
-<!--     `rownames<-`(str_lab) -->
-<!-- draws_a_mine <- matrix(NA, m, store) %>%  -->
-<!--   `rownames<-`(str_lab) -->
-
-<!-- draws_sigma <- matrix(NA, k * k, store) -->
-
-<!-- # Initial values -->
-<!-- u_sigma_i <- solve(u_sigma_freq) -->
-
-<!-- # Start Gibbs sampler -->
-<!-- for (draw in 1:iter) { -->
-<!--   # Draw conditional mean parameters -->
-<!--   a <- post_normal(y, x, u_sigma_i, a_mu_prior, a_v_i_prior) -->
-<!--   ### Mumtaz p.34 matlab code -->
-<!--   v_mine <- solve(a_v_i_prior + kronecker(u_sigma_i,x %*% t(x))) -->
-<!--   m_mine <- v_mine %*% (a_v_i_prior %*% a_mu_prior + kronecker(u_sigma_i,x %*% t(x)) %*% t(A_freq_vec)) -->
-<!--   a_mine <- MASS::mvrnorm(1, m_mine, v_mine) %>% as.matrix() -->
-
-<!--   # Draw variance-covariance matrix -->
-<!--   u <- y - matrix(a, k) %*% x # Obtain residuals -->
-<!--   u_sigma_scale_post <- solve(u_sigma_scale_prior + tcrossprod(u)) -->
-<!--   u_sigma_i <- matrix(rWishart(1, u_sigma_df_post, u_sigma_scale_post)[,, 1], k) -->
-<!--   u_sigma <- solve(u_sigma_i) # Invert Sigma_i to obtain Sigma -->
-
-<!--   # Store draws -->
-<!--   if (draw > burnin) { -->
-<!--     draws_a[, draw - burnin] <- a -->
-<!--     draws_a_mine[, draw - burnin] <- a_mine -->
-<!--     draws_sigma[, draw - burnin] <- u_sigma -->
-<!--   } -->
-<!-- } -->
-
-<!-- ``` -->
-
-
-<!-- ```{r Gibbs} -->
-<!-- ### outputs -->
-
-<!-- tbl_A_bayes <- rbind( -->
-<!--   mutate(t(draws_a) %>% as_tibble(), algo = "package"), -->
-<!--   mutate(t(draws_a_mine) %>% as_tibble(), algo = "mine") -->
-<!-- ) -->
-
-<!-- tbl_A_freq <- tibble(name = str_lab, value = my_vec(A_freq) %>% as.numeric()) %>%  -->
-<!--   transmute(y = str_remove(name, "_.*$") %>% factor(levels = str_y),  -->
-<!--             x = str_remove(name, "^.*_") %>% factor(levels = str_x), -->
-<!--             value) -->
-
-<!-- tbl_A_bayes_dens <- tbl_A_bayes %>%  -->
-<!--   pivot_longer(cols = -algo) %>%  -->
-<!--   transmute(algo,  -->
-<!--             y = str_remove(name, "_.*$") %>% factor(levels = str_y),  -->
-<!--             x = str_remove(name, "^.*_") %>% factor(levels = str_x), -->
-<!--             value) -->
-
-<!-- tbl_A_bayes_ci <- tbl_A_bayes_dens %>%  -->
-<!--   group_by(algo, y, x) %>%  -->
-<!--   summarize(ltile = quantile(value, 0.05), -->
-<!--             median = quantile(value, 0.50), -->
-<!--             utile = quantile(value, 0.95)) %>%  -->
-<!--   ungroup() -->
-
-
-<!-- ggplot() + -->
-<!--   geom_density(data = tbl_A_bayes_dens, -->
-<!--                mapping = aes(x = value, color = algo)) + -->
-<!--   facet_wrap(~ x + y, ncol = 3,scales = "free")+ -->
-<!--   # geom_point(data = tbl_A_freq, mapping = aes(x = value, y = 0))+ -->
-<!--   geom_vline(data = tbl_A_freq, aes(xintercept = value))+ -->
-<!--   geom_point(data = tbl_A_bayes_ci %>% filter(algo == "package"), -->
-<!--              mapping = aes(x = ltile, y = 0))+ -->
-<!--   geom_point(data = tbl_A_bayes_ci %>% filter(algo == "package"), -->
-<!--              mapping = aes(x = utile, y = 0))+ -->
-<!--   geom_point(data = tbl_A_bayes_ci %>% filter(algo == "package"), -->
-<!--              mapping = aes(x = median, y = 0)) -->
-
-
-<!-- ``` -->
-
-
