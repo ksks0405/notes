@@ -92,36 +92,32 @@ $$
 
 ## モデル
 
-
-Carter & Kohn (1994) Chap.2 ベース：スカラー状態空間 + mixture 観測誤差
+Carter & Kohn (1994) Chap.2をベースに、観測と状態がともにスカラーで、かつ観測係数と状態係数がともに定数（i.e. $F_t = F, \, h_t = h$）のモデルを考える：
 
 $$
 \begin{alignedat}{2}
 y_t &= h\,x_t + e_t, && \qquad t=1,\ldots,n,\\
-x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1.
+x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1,
 \end{alignedat}
 $$
-である。ここで $y_t$ はスカラー観測、$x_t$ はスカラー状態、$h$ は既知（あるいはパラメータ）のスカラー係数、$e_t$ は観測誤差、 $F$ は既知（あるいはパラメータ）のスカラー係数、$u_t$ は状態方程式のイノベーションである。
+- $\{y_t\}_{t=1}^n$：スカラー観測、
 
-状態イノベーションは同分散（homoskedastic）な分散$\tau>0$を用いて下記のように表す。
+- $\{x_t\}_{t=1}^n$：スカラー状態、
+
+- $h$：観測方程式のスカラー係数、$e_t$：観測誤差、
+
+- $F$：状態方程式のスカラー係数、$u_t$：状態のイノベーション
+
+状態イノベーションは同分散な分散$\tau>0$を用いて下記のように表す。
 $$
 u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
 $$
 
-観測誤差は二成分の混合正規（mixture normal）であり、、 基準分散 $R>0$ 、 スケール $C>1$ により以下のように表す。
+観測誤差は**二成分の混合正規（mixture normal）**とし、基準分散 $R>0$ 、 スケール $C>1$、潜在indicator$K_t\in\{0,1\}$により以下のように表す。
 $$
 e_t \mid K_t=0 \sim N(0,R),\qquad
 e_t \mid K_t=1 \sim N(0,CR), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
 $$
-
-- $y_t$：観測値
-- $x_t$：状態（未知）
-
-以下はモデルのパラメータ。
-
-- $h$：観測方程式のAR項、$F$：状態遷移方程式のAR項、$R$：観測方程式のノイズ、 $C$：観測方程式のノイズ（状態$2$のスケーラー）、  $\tau$：状態遷移方程式のノイズの分散、$K_t\in\{0,1\}$：潜在 indicator 
-
-$\{K_t\}$ は（少なくとも事前には）時点間独立であるとする。
 
 初期状態には便宜的に
 $$
@@ -142,42 +138,24 @@ CR & (K_t=1),
 $$
 と確定し、モデルは $(h,F,R_t,\tau)$ を持つ線形ガウス状態空間モデルとして扱える。
 
-予測量（forward filteringで使う記号）
-
-forward filtering では、予測分布
-$$
-x_t \mid y^{t-1} \sim N(a_t, s_t)
-$$
-を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。
-このとき予測された観測分布は
-$$
-y_t \mid y^{t-1} \sim N(b_t, v_t),
-$$
-ただし
-$$
-b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
-v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
-$$
-である。
-
 ## データ生成（fictitious data）
 
-```{r IMP dataset}
+以下では、真のモデルを$h=1$、$F=1$、$R = 1$、$C = 4$、$\{K_t\}_{t=1}^4 = \{0, 1, 0, 1\}$としてデータを生成する。ただし、状態・観測ノイズは、数値例を簡潔にするため手動で設定する。
+
+```{r IMP parameters}
 # Model: x_{t+1} = 0.7 x_t + u_t,  y_t = x_t + e_t
 # Var settings (model): Var(e_t)=1, Var(u_t)=1 or 4 depending on K
-
 n <- 4
 h <- 0.7
-
-# Observation error variance (model setting)
 R <- 1
 C <- 4
 K <- c(0, 1, 0, 1)
 R_t <- ifelse(K == 0, R, C * R)
-
-# State innovation variances (model setting)
 tau <- 1
+```
 
+
+```{r IMP dataset}
 # Fixed shocks
 x1 <- 0
 u  <- c(1,  2, -1)                 # u1,u2,u3 (fixed)
@@ -199,11 +177,26 @@ truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e,
 truth
 ```
 
-
-
 ### Forward filtering
 
-$x_1$の予測分布は、
+forward filtering では、**1期前までの観測に基づく状態の予測分布**
+
+$$
+x_t \mid y^{t-1} \sim N(a_t, s_t)
+$$
+
+を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。このとき、**観測の予測分布**は、
+$$
+y_t \mid y^{t-1} \sim N(b_t, v_t),
+$$
+
+$$
+b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
+v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
+$$
+である。
+
+データにあたはめると、$x_1$の予測分布は、
 $$ 
 \begin{aligned}
 x_1|y^0 &\sim N(a_1, s_1), \,\text{where}\\
@@ -240,6 +233,8 @@ $$
 \therefore L_1 =  \frac{hs_1}{h^2s_1+R_1}
 $$
 
+#### Forward sampling 実装 
+
 数値例に当てはめると、
 
 $$
@@ -256,6 +251,7 @@ a_1^+ := \underbrace{ E[{x}_1|y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|y^0])}_{y_1
 \end{cases}
 $$
 
+以上のステップを基に、forward filtering関数`ck_forward_filter_scalar_mixture`を書く。
 
 ```{r FUN ff}
 ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
@@ -316,9 +312,9 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
 }
 ```
 
-手計算
+手計算とも一致する。
 
-```{r REG ff function vs handroll}
+```{r REG ff function vs handroll, class.source='fold-show'}
 fwd <- ck_forward_filter_scalar_mixture(
   y = y, h = h, F = 1, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
 fwd1 <- ck_forward_filter_scalar_mixture(
@@ -328,6 +324,8 @@ fwd2 <- ck_forward_filter_scalar_mixture(
 0+(h)/((h)^2+R)*(y[1]-0)
 0+(h)/((h)^2+R*C)*(y[1]-0)
 ```
+
+以下は、$h, F, C, R$の値を真の値で既知とし、2つの異なる$\{K\}$を仮定してフィルタリング分布の平均値を示している。$t = 1, 2, 3$を見ると、priorより大きい観測値を受けて、観測誤差のノイズを小さく見積もっている$\{K\}=\{0,0,0,0\}$ケースでより大きくposteriorを修正している。
 
 ```{r EXP ff plot}
 # --- 1) プロット用データを作る（prior / posterior） ---
@@ -389,9 +387,9 @@ ggplot() +
 
 ### Backward smoothing / sampling
 
-$x_T$の事後予測（$x_T|y^T \sim N(a_T^+, s_T^+) $) は、**forward filteringの最終ステップ**から直ちに得られる。
+$x_T$の事後予測（$x_T|y^T \sim N(a_T^{+}, s_T^{+}) $）は、**forward filteringの最終ステップ**から直ちに得られる。
 
-**Backward smoothing**では、$x_{T-1}$のフィルタリング分布（$x_{T-1}|y_{T-1}$）を、$x_T|y_{T-1}$と$x_T$の差（すなわち$T-1$期時点の予測分布からの乖離＝$T$時点の情報を反映）に回帰することで、未来の情報を遡って取り込んでいく：
+**Backward smoothing**では、$x_{T-1}$のフィルタリング分布（$x_{T-1}|y_{T-1}$）を、$x_T|y_{T-1}$と$x_T$の差（すなわち$T-1$期時点の予測分布からの乖離＝$T$時点の情報を反映）に回帰。これにより、**フィルタリング分布に逐次的に未来の情報を取り込んでいく**：
 
 $$
 \boxed{ \underbrace{x_{T-1}-E[x_{T-1}|y^{T-1}] }_{x_{T-1}\text{のフィルタ分布からの乖離をアップデート}} =  J_{t-1}\underbrace{(x_T- E[x_T|y^{T-1}]) }_{x_T\text{の予測分布からの乖離を基に}}+\xi_t}
@@ -416,7 +414,7 @@ $$
 
 - Smoothingは、$\tilde{a}_T = E[x_T|y^T]$を使う
 
-#### Backward sampling 実装 
+#### Backward smoothing 実装 
 
 ```{r FUN backward smoothing}
 ck_backward_smoother_scalar <- function(fwd) {
@@ -527,7 +525,7 @@ ggplot() +
 
 ```
 
-#### Backward smoothing 実装 
+#### Backward sampling 実装 
 
 ```{r FUN backward sampling}
 ck_backward_sampler_scalar <- function(fwd) {
@@ -612,32 +610,17 @@ df_draws <- as_tibble(Xdraw) %>%
 
 # 3) Plot: band + smoothed mean + 10 sampled trajectories
 ggplot() +
-  geom_ribbon(
-    data = df_band,
-    aes(x = t, ymin = lo, ymax = hi),
-    alpha = 0.2
-  ) +
-  geom_line(
-    data = df_band,
-    aes(x = t, y = mean),
-    linewidth = 1.1
-  ) +
-  geom_line(
-    data = df_draws,
-    aes(x = t, y = x, group = draw),
-    linewidth = 0.6,
-    alpha = 0.7
-  ) +
+  geom_ribbon(data = df_band, aes(x = t, ymin = lo, ymax = hi), alpha = 0.2) +
+  geom_line(data = df_band, aes(x = t, y = mean), linewidth = 1.1) +
+  geom_line(data = df_draws, aes(x = t, y = x, group = draw), linewidth = 0.5, alpha = 0.5) +
   labs(
-    x = "t",
-    y = "state",
+    x = "t", y = "state", 
     title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 10 backward-sampling draws"
   ) +
   theme_minimal()
 
 
 ```
-
 
 # 注意（Gibbs 全体にするには）
 
@@ -648,3 +631,5 @@ Carter & Kohn の Gibbs 全体や Kim et al. のSV推計では、別途
 - さらにパラメータ $\theta$ を更新するステップ
 
 が加わります。
+
+
