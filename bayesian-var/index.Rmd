@@ -1429,7 +1429,7 @@ msfe_1step_expanding <- function(df_long, vars, p,
 
 ```{r REG msfe different tau}
 msfe_table <- tibble()
-for (tau_loop in c(1:20)/10){
+for (tau_loop in c(1:5)/10){
   print(tau_loop)
   res_msfe <- msfe_1step_expanding(df_var_long, vars, p, soc_hyper = list(tau = tau_loop), dobs_hyper = list(tau_loop))
   msfe_table_loop <- mutate(res_msfe$msfe, tau = tau_loop)
@@ -1443,11 +1443,12 @@ msfe_table %>%
   geom_line()+
   geom_point()+
   facet_wrap(~var, scales = "free", ncol = 1)
-
-
 ```
 
+```{r}
 res_msfe <- msfe_1step_expanding(df_var_long, vars, p)
+df_se <- res_msfe$se
+```
 
 ```{r EXP msfe}
 res_msfe$msfe %>% 
