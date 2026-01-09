@@ -606,6 +606,8 @@ ggplot() +
 ```
 
 
+# Gibbs Samling
+
 ```{r}
 sample_K_given_x <- function(y, x, h, R, C, p) {
   # returns K in {0,1}^n
