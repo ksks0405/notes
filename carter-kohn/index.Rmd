@@ -145,9 +145,10 @@ $$
 
 ```{r IMP parameters}
 # Model: x_{t+1} = 0.7 x_t + u_t,  y_t = x_t + e_t
-# Var settings (model): Var(e_t)=1, Var(u_t)=1 or 4 depending on K
+# Var settings (model): Var(e_t)=1 or 4 depending on K, Var(u_t) = 1
 n <- 4
-h <- 0.7
+h <- 1
+FF <- 0.7
 R <- 1
 C <- 4
 K <- c(0, 1, 0, 1)
@@ -166,12 +167,12 @@ e  <- c(0.5, -0.5, 1, -1) # e1..e4 (fixed)
 x <- numeric(n)
 x[1] <- x1
 for(t in 1:(n-1)){
-  x[t+1] <- h * x[t] + u[t]
+  x[t+1] <- FF * x[t] + u[t]
 }
-y <- x + e
+y <- h * x + e
 
 truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e, 
-                    u = c(u, NA), Var_e = rep(tau, n), Var_u = R_t)
+                    u = c(u, NA), Var_e = R_t, Var_u = rep(tau, n))
 ```
 
 ```{r EXP dataset}
@@ -185,7 +186,7 @@ forward filtering では、$x_t$**の1期前までの観測に基づく状態の
 $$ 
 \begin{aligned}
 x_{t}|Y^{t-1} &\sim N(a_{t}, s_{t}), \,\text{where}\\
-a_{t} &= E[x_{t}|Y^0]\\
+a_{t} &= E[x_{t}|Y^{t-1}]\\
 s_{t} &= E[(x_{t}-a_{t})^2|Y^{t-1}]
 \end{aligned}
 $$
@@ -224,15 +225,12 @@ $$
 
 ```{r FUN ff}
 ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
-  # --- checks ---
-  y <- as.numeric(y)
+  # checks
+ y <- as.numeric(y)
   n <- length(y)
-  if (length(K) != n) stop("K must have the same length as y (n).")
-  if (any(!K %in% c(0, 1))) stop("K must be a 0/1 vector.")
-  if (R <= 0) stop("R must be > 0 (variance).")
-  if (tau   <= 0) stop("tau must be > 0 (variance).")
-  if (C     <= 0) stop("C must be > 0.")
-  if (s1    <= 0) stop("s1 must be > 0 (variance).")
+  if (length(K) != n) stop("K must have length n.")
+  if (any(!K %in% c(0,1))) stop("K must be 0/1.")
+  if (R <= 0 || C <= 0 || tau <= 0 || s1 <= 0) stop("variances/scales must be > 0.")
 
   # conditional obs variances R_t = Var(e_t | K_t)
   R_t <- ifelse(K == 0, R, C * R)
@@ -287,15 +285,15 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
 
 $$
 L_1 = \frac{hs_1}{h^2s_1+R_1} = \begin{cases}
-\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
-\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
+\dfrac{1 \times 1}{1^2\times 1+1} = 0.5 \quad (\text{low volatility})\\[1em]
+\dfrac{1 \times 1}{1^2\times 1+4} = 0.2 \quad (\text{high volatility})
 \end{cases}
 $$
 
 $$
 a_1^+ := \underbrace{ E[{x}_1|Y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|Y^0])}_{y_1-ha_1} = \begin{cases}
-0 + 0.470 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
-0 + 0.156 \times (0.5-0) = 0.078 \quad (\text{high volatility})
+0 + 0.5 \times (0.5-0) = 0.25 \quad (\text{low volatility})\\[1em]
+0 + 0.2 \times (0.5-0) = 0.10 \quad (\text{high volatility})
 \end{cases}
 $$
 
@@ -303,13 +301,17 @@ $$
 
 ```{r REG ff function vs handroll, class.source='fold-show'}
 fwd <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = 1, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
+  y = y, h = h, F = FF, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
 fwd1 <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = 1, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
+  y = y, h = h, F = FF, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
 fwd2 <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = 1, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
+  y = y, h = h, F = FF, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
+print("手計算 (high; low)")
 0+(h)/((h)^2+R)*(y[1]-0)
 0+(h)/((h)^2+R*C)*(y[1]-0)
+print("関数 (high; low)")
+fwd1$a_upd[[1]]
+fwd2$a_upd[[1]]
 ```
 
 以下は、$h, F, C, R$の値を真の値で既知とし、2つの異なる$\{K\}$を仮定してフィルタリング分布の平均値を示している。$t = 1, 2, 3$を見ると、priorより大きい観測値を受けて、観測誤差のノイズを小さく見積もっている$\{K\}=\{0,0,0,0\}$ケースでより大きくposteriorを修正している。
@@ -355,12 +357,9 @@ ggplot() +
   # prior / posterior：ケースで色分け、priorは点線、posteriorは実線
   geom_line(
     data = df12,
-    aes(x = t, y = value, color = case, linetype = series),
-    linewidth = 0.9
+    aes(x = t, y = value, color = case, linetype = series)
   ) +
-  scale_linetype_manual(
-    values = c(prior = "dashed", posterior = "solid")
-  ) +
+  scale_linetype_manual(values = c(prior = "dashed", posterior = "solid")) +
   labs(
     x = "t",
     y = "value",
@@ -463,7 +462,9 @@ ck_backward_smoother_scalar <- function(fwd) {
 ```{r}
 sm1 <- ck_backward_smoother_scalar(fwd1)
 sm2 <- ck_backward_smoother_scalar(fwd2)
+```
 
+```{r}
 # --- 4) backward smoother の点予測（E[x_t|y^T]）を df に ---
 mk_sm_df <- function(sm, case_label) {
   tibble(
@@ -493,9 +494,8 @@ ggplot() +
     linewidth = 0.9
   ) +
   scale_linetype_manual(
-    values = c(prior = "dashed", posterior = "solid", smooth = "dotdash")
+    values = c(prior = "dotted", posterior = "dashed", smooth = "solid")
   ) +
-  # backward smoothing 点予測：dotdash（caseで色分けは同じ）
   geom_line(
     data = df_sm,
     aes(x = t, y = smooth, color = case, linetype = "smooth"),
@@ -597,28 +597,167 @@ df_draws <- as_tibble(Xdraw) %>%
 # 3) Plot: band + smoothed mean + 10 sampled trajectories
 ggplot() +
   geom_ribbon(data = df_band, aes(x = t, ymin = lo, ymax = hi), alpha = 0.2) +
-  geom_line(data = df_band, aes(x = t, y = mean), linewidth = 1.1) +
+  geom_line(data = df_band, aes(x = t, y = mean), linewidcth = 1.1) +
   geom_line(data = df_draws, aes(x = t, y = x, group = draw), linewidth = 0.5, alpha = 0.5) +
   labs(
     x = "t", y = "state", 
     title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 10 backward-sampling draws"
-  ) +
-  theme_minimal()
+  )
 ```
 
-# 注意（Gibbs 全体にするには）
 
-このRmdは「$K$ を与えた条件付きで $p(X \mid Y^n,K, \theta)$ から状態列を引く」部分だけを実装しています。  
-Carter & Kohn の Gibbs 全体や Kim et al. のSV推計では、別途
+```{r}
+sample_K_given_x <- function(y, x, h, R, C, p) {
+  # returns K in {0,1}^n
+  n <- length(y)
+  e <- y - h * x
 
-- $p(K \mid Y^n,X, \theta)$ から $K$ を更新するステップ（離散）
-- さらにパラメータ $\theta$ を更新するステップ
+  # log weights
+  logw0 <- log(p)     + dnorm(e, mean=0, sd=sqrt(R),   log=TRUE)
+  logw1 <- log(1 - p) + dnorm(e, mean=0, sd=sqrt(C*R), log=TRUE)
 
-が加わります。
+  # P(K=1 | ...) = w1 / (w0+w1) in log-scale
+  m <- pmax(logw0, logw1)
+  w0 <- exp(logw0 - m)
+  w1 <- exp(logw1 - m)
+  prob1 <- w1 / (w0 + w1)
+
+  rbinom(n, size=1, prob=prob1)
+}
+```
+
+```{r}
+sample_tau_given_x <- function(x, F, alpha0, beta0) {
+  u <- x[2:length(x)] - F * x[1:(length(x)-1)]
+  alpha_post <- alpha0 + (length(u))/2
+  beta_post  <- beta0  + 0.5 * sum(u^2)
+
+  # if 1/tau ~ Gamma(alpha_post, rate=beta_post)
+  1 / rgamma(1, shape=alpha_post, rate=beta_post)
+}
+```
+
+```{r}
+gibbs_ssm_mixture_tau_xK <- function(y, h, F, R, C, p, a1, s1,
+                                    alpha0=2, beta0=1,
+                                    n_iter=5000, burn=1000,
+                                    init_tau=1, init_K=NULL, seed=123) {
+  set.seed(seed)
+  y <- as.numeric(y)
+  n <- length(y)
+
+  if (is.null(init_K)) init_K <- rbinom(n, 1, 1-p)
+  if (length(init_K) != n) stop("init_K must have length n.")
+  K <- init_K
+  tau <- init_tau
+
+  # initial x draw
+  fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+  x <- ck_backward_sampler_scalar(fwd)
+
+  # storage
+  keep <- (burn+1):n_iter
+  n_keep <- length(keep)
+  tau_draw <- numeric(n_keep)
+  x_draw   <- matrix(NA_real_, nrow=n_keep, ncol=n)
+  K_draw   <- matrix(NA_integer_, nrow=n_keep, ncol=n)
+
+  idx <- 0
+  for (iter in 1:n_iter) {
+
+    # 1) x | K, tau, y  (FFBS)
+    fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+    x <- ck_backward_sampler_scalar(fwd)
+
+    # 2) K | x, y
+    K <- sample_K_given_x(y, x, h, R, C, p)
+
+    # 3) tau | x
+    tau <- sample_tau_given_x(x, F, alpha0, beta0)
+
+    # store
+    if (iter %in% keep) {
+      idx <- idx + 1
+      tau_draw[idx] <- tau
+      x_draw[idx, ] <- x
+      K_draw[idx, ] <- K
+    }
+  }
+
+  list(
+    y=y, h=h, F=F, R=R, C=C, p=p, a1=a1, s1=s1,
+    alpha0=alpha0, beta0=beta0,
+    tau_draw=tau_draw,
+    x_draw=x_draw,
+    K_draw=K_draw
+  )
+}
+
+```
+
+```{r}
+# 例：pは既知として固定（ここでは0.5）
+p <- 0.5
+
+a1 = 0
+s1 = 1
+alpha0 = 2
+beta0  = 1
+n_iter = 5000
+burn   = 1000
+
+y <- as.numeric(y)
+n <- length(y)
+
+init_K <- rbinom(n, 1, 1-p)
+init_tau <- 1
+
+K <- init_K
+tau <- init_tau
+
+# initial x draw
+fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+x <- ck_backward_sampler_scalar(fwd)
+
+# storage
+keep <- (burn+1):n_iter
+n_keep <- length(keep)
+tau_draw <- numeric(n_keep)
+x_draw   <- matrix(NA_real_, nrow=n_keep, ncol=n)
+K_draw   <- matrix(NA_integer_, nrow=n_keep, ncol=n)
+
+idx <- 0
+for (iter in 1:n_iter) {
+  
+  # 1) x | K, tau, y  (FFBS)
+  fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+  x <- ck_backward_sampler_scalar(fwd)$x_draw
+  
+  # 2) K | x, y
+  K <- sample_K_given_x(y, x, h, R, C, p)
+  
+  # 3) tau | x
+  tau <- sample_tau_given_x(x, F, alpha0, beta0)
+  
+  # store
+  if (iter %in% keep) {
+    idx <- idx + 1
+    tau_draw[idx] <- tau
+    x_draw[idx, ] <- x
+    K_draw[idx, ] <- K
+  }
+}
+
+mean(tau_draw)
+colMeans(x_draw)
+colMeans(K_draw) 
+```
+
 
 ```{r, class.source='fold-show'}
 getwd()
 ```
+
 
 
 
