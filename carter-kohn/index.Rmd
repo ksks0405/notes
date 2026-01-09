@@ -64,10 +64,14 @@ x(t+1) &= F(t+1)x(t) + u(t+1). &\quad\text{(1-2)}
 $$
 
 - 観測：スカラー $y(t)$  
-- 状態：$m \times 1$ の $x(t)$  
-- indicator：$K(t)$（誤差の mixture 成分など）  
-- $K = \{K(1), \ldots,K(n)\}$ を与えると、誤差が条件付きガウスになり、(1-1)(1-2) はガウス状態空間
 
+- 状態：$m \times 1$ の $x(t)$  
+
+- indicator：$K(t)$（誤差の mixture 成分など）  
+
+- $K = \{K(1), \ldots,K(n)\}$
+
+を与えると、誤差が条件付きガウスになり、(1-1)(1-2) はガウス状態空間
 
 # §2-2 の要点：後ろ向き分解（Lemma 2-1）
 
@@ -81,9 +85,12 @@ $$
 
 実装は
 
-1. **前向き**：Kalman filter で $x(t \mid t)$ と $S(t \mid t)$ を全時点保存  
+1. **前向き**：Kalman filter で $x(t \mid t)$ と $S(t \mid t)$ を全時点保存
+
 2. **後ろ向き**：
+
    - $x(n) \sim p(x(n) \mid Y^n)=N(x(n \mid n),S(n \mid n))$
+
    - $t=n-1, \ldots,1$ で $x(t) \sim p(x(t) \mid Y^t,x(t+1))$
 
 です。
@@ -105,26 +112,26 @@ $$
 
 - $\{x_t\}_{t=1}^n$：スカラー状態、
 
-- $h$：観測方程式のスカラー係数、$e_t$：観測誤差、
+- $h$：観測方程式の係数、$e_t$：観測誤差、
 
-- $F$：状態方程式のスカラー係数、$u_t$：状態のイノベーション
+- $F$：状態方程式の係数、$u_t$：状態イノベーション
 
-状態イノベーションは同分散な分散$\tau>0$を用いて下記のように表す。
-$$
-u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
-$$
+- **状態イノベーション**は同分散な分散$\tau>0$を仮定：
+  $$
+  u_t \sim N(0,\tau),\qquad t=1,\ldots,n-1,
+  $$
 
-観測誤差は**二成分の混合正規（mixture normal）**とし、基準分散 $R>0$ 、 スケール $C>1$、潜在indicator$K_t\in\{0,1\}$により以下のように表す。
-$$
-e_t \mid K_t=0 \sim N(0,R),\quad
-e_t \mid K_t=1 \sim N(0,CR), \quad \Pr(K_t=0)=p,\quad \Pr(K_t=1)=1-p.
-$$
+- **観測誤差**は**二成分の混合正規（mixture normal）**とし、基準分散 $R>0$ 、 スケール $C>1$、潜在indicator$K_t\in\{0,1\}$を使って以下のように表す：
+  $$
+  e_t \mid K_t=0 \sim N(0,R),\quad
+  e_t \mid K_t=1 \sim N(0,CR), \quad \Pr(K_t=0)=p,\quad \Pr(K_t=1)=1-p.
+  $$
 
-初期状態には便宜的に
+また、初期状態（つまり$t = 1$の予測分布）は、$a_1$（初期平均）、$s_1$ （初期分散）を用いて以下のように仮定する。
+
 $$
 x_1 \sim N(a_1, s_1)
 $$
-を仮定する。ここで $a_1$ は初期平均、$s_1$ は初期分散である。
 
 さらに、条件付きでガウス状態空間になるように、$K=(K_1,\ldots,K_n)$ を与えたもとで
 $\{e_t\}$ と $\{u_t\}$ は互いに独立、かつそれぞれ時点間独立であると仮定する。
@@ -141,7 +148,7 @@ $$
 
 ## データ生成（fictitious data）
 
-以下では、真のモデルを$h=1$、$F=1$、$R = 1$、$C = 4$、$\{K_t\}_{t=1}^4 = \{0, 1, 0, 1\}$としてデータを生成する。ただし、状態・観測ノイズは、数値例を簡潔にするため手動で設定する。
+以下では、真のモデルを$h=1$、$F=0.7$、$R = 1$、$C = 4$としてデータを生成する。ただし、$n=4$のサンプルでは、数値例を簡潔にするため状態・観測ノイズを手動で設定する（真の$K$は$\{K_t\}_{t=1}^4 = \{0, 1, 0, 1\}$を想定）。
 
 ```{r IMP parameters}
 # Model: x_{t+1} = 0.7 x_t + u_t,  y_t = x_t + e_t
@@ -173,7 +180,6 @@ y <- h * x + e
 truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e, 
                     u = c(u, NA), Var_e = R_t, Var_u = rep(tau, n))
 ```
-
 
 ```{r EXP dataset}
 truth
@@ -221,7 +227,9 @@ $$
 \therefore L_t =  \frac{hs_t}{h^2s_t+R_t}
 $$
 
-以上のステップを基に、forward filtering関数`ck_forward_filter_scalar_mixture`を書く。
+#### Forward sampling 実装 
+
+以上のステップは、以下のforward filtering関数`ck_forward_filter_scalar_mixture`により実行可能。
 
 ```{r FUN ff}
 ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
@@ -232,43 +240,40 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
   if (any(!K %in% c(0,1))) stop("K must be 0/1.")
   if (R <= 0 || C <= 0 || tau <= 0 || s1 <= 0) stop("variances/scales must be > 0.")
 
-  # conditional obs variances R_t = Var(e_t | K_t)
-  R_t <- ifelse(K == 0, R, C * R)
-
-  # prior moments BEFORE seeing y_t
+  # results variable
   a <- numeric(n)  # a_t = E[x_t | y^{t-1}]
   s <- numeric(n)  # s_t = Var[x_t | y^{t-1}]
   b <- numeric(n)  # b_t = E[y_t | y^{t-1}]
   v <- numeric(n)  # v_t = Var[y_t | y^{t-1}]
-
-  # posterior moments AFTER seeing y_t
   a_upd <- numeric(n)  # a_t^{+} = E[x_t | y^{t}]
   s_upd <- numeric(n)  # s_t^{+} = Var[x_t | y^{t}]
+  gain <- numeric(n)　# Kalman gain
+  
+  # conditional obs variances R_t = Var(e_t | K_t)
+  R_t <- ifelse(K == 0, R, C * R)
 
-  # Kalman gain
-  gain <- numeric(n)
-
-  # initial predictive for t=1
-  a[1] <- a1
-  s[1] <- s1
-
+  ### MAIN PART ###
   for (t in 1:n) {
-    # predicted observation
+    ### prior predict of state x
+    if(t == 1){
+      # initial state for t=1
+      a[t] <- a1
+      s[t] <- s1
+    }else{
+      # update from t-1 filter distribution
+      a[t] <- F * a_upd[t-1]
+      s[t] <- (F^2) * s_upd[t-1] + tau
+    }
+    ### prior predict of observation y
     b[t] <- h * a[t]
     v[t] <- (h^2) * s[t] + R_t[t]
 
-    # Kalman gain
+    ### calculate Kalman gain
     gain[t] <- (s[t] * h) / v[t]
 
     # update with y_t
     a_upd[t] <- a[t] + gain[t] * (y[t] - b[t])
     s_upd[t] <- s[t] - (gain[t]^2) * v[t]   # equivalent to (1 - gain[t]*h)*s[t]
-
-    # predict next state (if t < n)
-    if (t < n) {
-      a[t + 1] <- F * a_upd[t]
-      s[t + 1] <- (F^2) * s_upd[t] + tau
-    }
   }
 
   list(
@@ -279,9 +284,16 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
 }
 ```
 
-#### Forward sampling 実装 
+```{r REG ff using function, class.source='fold-show'}
+fwd <- ck_forward_filter_scalar_mixture(
+  y = y, h = h, F = FF, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
+fwd1 <- ck_forward_filter_scalar_mixture(
+  y = y, h = h, F = FF, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
+fwd2 <- ck_forward_filter_scalar_mixture(
+  y = y, h = h, F = FF, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
+```
 
-数値例に当てはめると、
+$t = 1$ の場合について数値例を基に手計算すると、
 
 $$
 L_1 = \frac{hs_1}{h^2s_1+R_1} = \begin{cases}
@@ -297,15 +309,11 @@ a_1^+ := \underbrace{ E[{x}_1|Y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|Y^0])}_{y_1
 \end{cases}
 $$
 
-手計算とも一致する。
+となり、手計算と関数が一致することが確認できる。
+
+
 
 ```{r REG ff function vs handroll, class.source='fold-show'}
-fwd <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = FF, R = R, C = C, K = K, a1 = 0, s1 = 1, tau = tau)
-fwd1 <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = FF, R = R, C = C, K = c(0, 0, 0, 0), a1 = 0, s1 = 1, tau = tau)
-fwd2 <- ck_forward_filter_scalar_mixture(
-  y = y, h = h, F = FF, R = R, C = C, K = c(1, 1, 1, 1), a1 = 0, s1 = 1, tau = tau)
 print("手計算 (high; low)")
 0+(h)/((h)^2+R)*(y[1]-0)
 0+(h)/((h)^2+R*C)*(y[1]-0)
@@ -317,7 +325,7 @@ fwd2$a_upd[[1]]
 以下は、$h, F, C, R$の値を真の値で既知とし、2つの異なる$\{K\}$を仮定してフィルタリング分布の平均値を示している。$t = 1, 2, 3$を見ると、priorより大きい観測値を受けて、観測誤差のノイズを小さく見積もっている$\{K\}=\{0,0,0,0\}$ケースでより大きくposteriorを修正している。
 
 ```{r EXP ff plot}
-# --- 1) プロット用データを作る（prior / posterior） ---
+# --- 1) プロット用データ ---
 mk_df <- function(fwd, case_label) {
   tibble(
     t = 1:fwd$n,
@@ -327,24 +335,14 @@ mk_df <- function(fwd, case_label) {
   )
 }
 
-df12 <- bind_rows(
-  mk_df(fwd1, "K=(0,0,0,0)"),
-  mk_df(fwd2, "K=(1,1,1,1)")
-) %>%
-  pivot_longer(
-    cols = c(prior, posterior),
-    names_to = "series",
-    values_to = "value"
-  ) %>%
+df12 <- bind_rows(mk_df(fwd1, "K=(0,0,0,0)"),  mk_df(fwd2, "K=(1,1,1,1)")) %>%
+  pivot_longer(cols = c(prior, posterior), names_to = "series", values_to = "value") %>%
   mutate(
     series = factor(series, levels = c("prior", "posterior"))
   )
 
-# --- 2) 観測値（×、線なし）は1本だけ ---
-df_obs <- tibble(
-  t = 1:length(y),
-  y = as.numeric(y)
-)
+# --- 2) 観測値 ---
+df_obs <- tibble(t = 1:length(y), y = as.numeric(y))
 
 # --- 3) ggplot ---
 ggplot() +
@@ -394,13 +392,9 @@ $$
 \therefore J_{t-1}  = \frac{F s_{T-1}^+}{F^2s_{T-1}^+ + \tau} 
 $$
 
-**注意点：SamplingとSmoothingの違い**
+#### Backward smoothing 実装
 
-- Samplingは、$x_T$（サンプル値）を使う
-
-- Smoothingは、$\tilde{a}_T = E[x_T|y^T]$を使う
-
-#### Backward smoothing 実装 
+Backward smoothingを実装する関数は以下の通り。
 
 ```{r FUN backward smoothing}
 ck_backward_smoother_scalar <- function(fwd) {
@@ -459,7 +453,7 @@ ck_backward_smoother_scalar <- function(fwd) {
 
 ```
 
-```{r}
+```{r REG backward smoothing}
 sm1 <- ck_backward_smoother_scalar(fwd1)
 sm2 <- ck_backward_smoother_scalar(fwd2)
 ```
@@ -511,6 +505,8 @@ ggplot() +
   theme_minimal()
 
 ```
+
+Smootherは、posteriorよりスムーズ。
 
 #### Backward sampling 実装 
 
@@ -580,12 +576,11 @@ df_band <- tibble(
   hi   = mean + sd
 )
 
-# 2) Backward sampling: 10 sample paths
-set.seed(123)  # optional (for reproducibility)
-M <- 50
-Xdraw <- replicate(M, ck_backward_sampler_scalar(fwd)$x_draw)  # n x M
+# 2) Backward sampling: 10000 sample paths
+M <- 10000
+Xdraw <- replicate(M, ck_backward_sampler_scalar(fwd1)$x_draw)  # n x M
 
-df_draws <- as_tibble(Xdraw) %>%
+df_draws <- as_tibble(Xdraw[1:n, 1:50]) %>%
   mutate(t = 1:sm$n) %>%
   pivot_longer(
     cols = -t,
@@ -594,19 +589,148 @@ df_draws <- as_tibble(Xdraw) %>%
   ) %>%
   mutate(draw = factor(draw))
 
-# 3) Plot: band + smoothed mean + 10 sampled trajectories
+# 3) Plot: band + smoothed mean + 50 sampled trajectories
 ggplot() +
   geom_ribbon(data = df_band, aes(x = t, ymin = lo, ymax = hi), alpha = 0.2) +
-  geom_line(data = df_band, aes(x = t, y = mean), linewidcth = 1.1) +
+  geom_line(data = df_band, aes(x = t, y = mean), linewidth = 1.1) +
   geom_line(data = df_draws, aes(x = t, y = x, group = draw), linewidth = 0.5, alpha = 0.5) +
   labs(
     x = "t", y = "state", 
-    title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 10 backward-sampling draws"
+    title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 50 backward-sampling draws"
   )
 ```
 
+**注意点：SamplingとSmoothingの違い**
+
+- Samplingは、$x_T$（サンプル値）を使う
+
+- Smoothingは、$\tilde{a}_T = E[x_T|y^T]$を使う
+
+以下のグラフからわかる通り、ここの（marginal）smoothing分布は、$a^{++}_t=E[x_t|Y^T]$と$s^{++}_t=\text{var}[x_t|Y^T]$の正規分布として与えられるが、同時分布は（一般に）相関することがある。
+
+```{r EXP marginal vs joint distribution}
+# --- 1) Build theoretical (smoothed) marginal densities for x1, x2 ---
+mu1 <- sm1$a_smooth[1]
+sd1 <- sqrt(sm1$s_smooth[1])
+
+mu2 <- sm1$a_smooth[2]
+sd2 <- sqrt(sm1$s_smooth[2])
+
+x1_emp <- as.numeric(Xdraw[1, ])
+x2_emp <- as.numeric(Xdraw[2, ])
+
+make_theory_df <- function(mu, sd, emp_vec, varname) {
+  # grid wide enough to show both theory and empirical
+  lo <- min(quantile(emp_vec, 0.005), mu - 4 * sd)
+  hi <- max(quantile(emp_vec, 0.995), mu + 4 * sd)
+  grid <- seq(lo, hi, length.out = 400)
+
+  tibble(
+    var = varname,
+    x = grid,
+    density = dnorm(grid, mean = mu, sd = sd),
+    source = "Smoothed N(a_smooth, s_smooth)"
+  )
+}
+
+df_theory <- bind_rows(
+  make_theory_df(mu1, sd1, x1_emp, "x1"),
+  make_theory_df(mu2, sd2, x2_emp, "x2")
+)
+
+# empirical draws in long format
+df_emp <- tibble(
+  x1 = as.numeric(x1_emp),
+  x2 = as.numeric(x2_emp)
+) |>
+  pivot_longer(cols = everything(), names_to = "var", values_to = "x") |>
+  mutate(source = "FFBS empirical")
+
+# --- 2) Plot: marginal comparison (x1 and x2), same graph per variable ---
+p_marginals <- ggplot() +
+  geom_density(
+    data = df_emp,
+    aes(x = x, linetype = source),
+    linewidth = 0.9
+  ) +
+  geom_line(
+    data = df_theory,
+    aes(x = x, y = density, linetype = source),
+    linewidth = 1.0
+  ) +
+  facet_wrap(~ var, scales = "free") +
+  labs(
+    x = "value",
+    y = "density",
+    linetype = "",
+    title = "Marginals: Smoothed N(a_smooth, s_smooth) vs FFBS empirical"
+  )
+
+print(p_marginals)
+
+# --- 3) Plot: empirical joint distribution of (x1, x2) ---
+df_joint <- tibble(x1 = x1_emp, x2 = x2_emp)
+
+corr12 <- cor(df_joint$x1, df_joint$x2)
+
+p_joint <- ggplot(df_joint, aes(x = x1, y = x2)) +
+  geom_point(alpha = 0.08, size = 0.6) +
+  stat_density_2d(aes(fill = after_stat(level)), geom = "polygon", alpha = 0.25, color = NA) +
+  labs(
+    x = expression(x[1]),
+    y = expression(x[2]),
+    title = "Empirical joint distribution from FFBS draws (x1 vs x2)",
+    subtitle = paste0("Empirical corr(x1, x2) = ", sprintf("%.4f", corr12))
+  ) +
+  guides(fill = "none")
+
+print(p_joint)
+
+```
 
 # Gibbs Samling
+
+## 長いデータ
+
+```{r IMP long data}
+pK1 <- 0.5
+
+n_long <- 150
+
+K_long <- rbinom(n_long, size = 1, prob = pK1)
+Var_e_long <- ifelse(K_long == 0, R, C * R)
+e_long <- rnorm(n_long, mean = 0, sd = sqrt(Var_e_long))
+u_trans <- rnorm(n_long - 1, mean = 0, sd = sqrt(tau))
+
+# build state x_t
+x_long <- numeric(n_long)
+x_long[1] <- 0  # 必要なら rnorm(1,0,sqrt(s1)) などに変更。
+
+for (t in 1:(n_long - 1)) {
+  x_long[t + 1] <- FF * x_long[t] + u_trans[t]
+}
+
+# observation y_t
+y_long <- h * x_long + e_long
+
+# pack as data.frame (matching your short truth format)
+truth_long <- data.frame(
+  t = 1:n_long,
+  K = K_long,
+  x = x_long,
+  y = y_long,
+  e = e_long,
+  u = c(u_trans, NA),        # u_t is used for x_{t+1}; last is NA
+  Var_e = Var_e_long,
+  Var_u = rep(tau, n_long)
+)
+```
+
+```{r EXP long data}
+ggplot(data = truth_long, mapping = aes(x = t))+
+  geom_line(mapping = aes(y = y), color = "red") +
+  geom_line(mapping = aes(y = x), color = "blue", linetype = "dashed")
+```
 
 ```{r}
 sample_K_given_x <- function(y, x, h, R, C, p) {
@@ -655,7 +779,7 @@ gibbs_ssm_mixture_tau_xK <- function(y, h, F, R, C, p, a1, s1,
 
   # initial x draw
   fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
-  x <- ck_backward_sampler_scalar(fwd)
+  x <- ck_backward_sampler_scalar(fwd)$x_draw
 
   # storage
   keep <- (burn+1):n_iter
@@ -694,13 +818,9 @@ gibbs_ssm_mixture_tau_xK <- function(y, h, F, R, C, p, a1, s1,
     K_draw=K_draw
   )
 }
-
 ```
 
 ```{r}
-# 例：pは既知として固定（ここでは0.5）
-p <- 0.5
-
 a1 = 0
 s1 = 1
 alpha0 = 2
@@ -708,17 +828,17 @@ beta0  = 1
 n_iter = 5000
 burn   = 1000
 
-y <- as.numeric(y)
+y <- as.numeric(truth_long$y)
 n <- length(y)
 
-init_K <- rbinom(n, 1, 1-p)
+init_K <- rbinom(n, 1, 1-pK1)
 init_tau <- 1
 
 K <- init_K
 tau <- init_tau
 
 # initial x draw
-fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+fwd <- ck_forward_filter_scalar_mixture(y, h, FF, R, C, K, tau, a1, s1)
 x <- ck_backward_sampler_scalar(fwd)
 
 # storage
@@ -732,14 +852,14 @@ idx <- 0
 for (iter in 1:n_iter) {
   
   # 1) x | K, tau, y  (FFBS)
-  fwd <- ck_forward_filter_scalar_mixture(y, h, F, R, C, K, tau, a1, s1)
+  fwd <- ck_forward_filter_scalar_mixture(y, h, FF, R, C, K, tau, a1, s1)
   x <- ck_backward_sampler_scalar(fwd)$x_draw
   
   # 2) K | x, y
-  K <- sample_K_given_x(y, x, h, R, C, p)
+  K <- sample_K_given_x(y, x, h, R, C, pK1)
   
   # 3) tau | x
-  tau <- sample_tau_given_x(x, F, alpha0, beta0)
+  tau <- sample_tau_given_x(x, FF, alpha0, beta0)
   
   # store
   if (iter %in% keep) {
@@ -750,9 +870,15 @@ for (iter in 1:n_iter) {
   }
 }
 
-mean(tau_draw)
-colMeans(x_draw)
-colMeans(K_draw) 
+hist(tau_draw)
+```
+
+
+```{r}
+ggplot(data = truth_long, mapping = aes(x = t))+
+  geom_line(mapping = aes(y = y), color = "red") +
+  geom_line(mapping = aes(y = colMeans(x_draw)), color = "green") +
+  geom_line(mapping = aes(y = x), color = "blue", linetype = "dashed")
 ```
 
 
@@ -760,6 +886,27 @@ colMeans(K_draw)
 getwd()
 ```
 
+```{r}
+
+df_band_x <- tibble(
+  t = 1:ncol(x_draw),
+  q10 = apply(x_draw, 2, quantile, probs = 0.10, na.rm = TRUE),
+  q50 = apply(x_draw, 2, quantile, probs = 0.50, na.rm = TRUE),
+  q90 = apply(x_draw, 2, quantile, probs = 0.90, na.rm = TRUE),
+  x_true = truth_long$x
+)
+
+ggplot(df_band_x, aes(x = t)) +
+  geom_ribbon(aes(ymin = q10, ymax = q90), alpha = 0.25) +
+  # geom_line(aes(y = q50), linewidth = 0.9) +
+  geom_line(aes(y = x_true), linewidth = 0.8, linetype = "dashed") +
+  labs(
+    x = "t",
+    y = "state x",
+    title = "State: posterior median & 10–90% band (from x_draw) vs true state",
+    subtitle = "Solid = posterior median, ribbon = 10–90%, dashed = true state"
+  )
+```
 
 
 
