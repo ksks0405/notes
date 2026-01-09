@@ -1,0 +1,1815 @@
+---
+title: "Bayesian VARs"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- The chunks in this code are classified as follows: -->
+
+<!-- -   SET: Load package, set default options, define functions and variables, etc. -->
+
+<!-- -   IMP: Import data. -->
+
+<!-- -   PRE: Process data, including creating and editing variables, -->
+
+<!-- -   FLT: Process data that involve FILTERING. -->
+
+<!-- -   EDA: Exploratory Data Analysis -->
+
+<!-- -   REG: Regressions -->
+
+<!-- -   EXP: Export results -->
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+-   This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+-   This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title=T, # default: F / normally F
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = F, # when hiding messages
+  warning = F  # when hiding errors
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+-   This chunk **loads the required packages** and **my functions**.
+
+```{r SET libraries, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse", #must-have
+  "gt",
+  "vars", # for VAR
+  "zoo", # table for VAR
+  "modelsummary", # summary functions and reg. tables
+  "quantmod" # FRED
+)
+
+easypackages::libraries(pkgList)
+
+rm(pkgList)
+```
+
+-   This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+# データ
+
+FREDからDL
+
+```{r IMP dataset}
+getSymbols(c("GDPC1", "GDPDEF", "FEDFUNDS"), src = "FRED")
+# GDP, def -> quarterly
+rgdp_q <- zoo(as.numeric(GDPC1), as.yearqtr(index(GDPC1)))
+def_q  <- zoo(as.numeric(GDPDEF), as.yearqtr(index(GDPDEF)))
+
+# FF -> monthly avg
+ff_m <- zoo(as.numeric(FEDFUNDS), as.yearmon(index(FEDFUNDS)))
+ff_q <- aggregate(ff_m, as.yearqtr, mean)
+
+# merge
+z_q <- na.omit(merge(rgdp_q, def_q, ff_q))
+colnames(z_q) <- c("RGDP", "DEF", "FF")
+
+# tibble
+df_var <- tibble(
+  date  = as.Date(as.yearqtr(index(z_q)), frac = 1),  # quarter end date
+  lRGDP = 100*log(as.numeric(z_q[, "RGDP"])),
+  lDEF  = 100*log(as.numeric(z_q[, "DEF"])),
+  FF    = as.numeric(z_q[, "FF"])
+)
+```
+
+```{r FLT span}
+# 推計期間
+df_var_long <- filter(df_var, "1980-01-01" <= date, date <= "2019-12-31")
+df_var <- filter(df_var, "1995-01-01" <= date, date <= "2019-12-31")
+```
+
+dfをtsに変換する関数
+
+```{r FUN df to ts, class.source='fold-hide'}
+to_ts_quarterly <- function(df, cols = c("lRGDP", "lDEF", "FF")) {
+  stopifnot(all(c("date", cols) %in% names(df)))
+  df <- df %>% arrange(date)
+
+  q <- as.yearqtr(df$date)
+
+  y0 <- as.integer(floor(as.numeric(q[1])))
+  qtr0 <- as.integer(round((as.numeric(q[1]) - y0) * 4 + 1))
+
+  ts_out <- ts(as.matrix(df[, cols]), start = c(y0, qtr0), frequency = 4)
+  colnames(ts_out) <- cols
+  ts_out
+}
+```
+
+```{r EXP dataset}
+gt(df_var) %>% fmt_number(decimals = 2)
+```
+
+# OLS推定
+
+ラグ・データセットの設定
+
+```{r REG setting}
+p <- 5
+ts_var <- to_ts_quarterly(df_var)
+```
+
+`vars::VAR`を利用
+
+```{r REG var}
+var_est <- VAR(ts_var, p = p, type = "const")
+```
+
+Quick check of result;
+
+```{r EXP ols result}
+vars <- c("lRGDP", "lDEF", "FF")
+
+coef_names_A <- c("const", unlist(lapply(1:p, function(l) paste0(vars, ".l", l))))
+
+coef_names_byvars <- c(
+  unlist(lapply(1:p, function(l) paste0("lRGDP.l", l))),
+  unlist(lapply(1:p, function(l) paste0("lDEF.l",  l))),
+  unlist(lapply(1:p, function(l) paste0("FF.l",    l))),
+  "const"
+)
+
+msummary(var_est$varresult, stars = T, coef_map = coef_names_byvars, fmt = 3, estimate = "{estimate} ({std.error}){stars}", statistic = NULL,
+         title = "Reduced-form VAR Estimation Results", gof_omit = "^BIC$|^AIC$|^R2$|^Log.Lik.$")
+```
+
+stationary check
+
+```{r EXP ols result stationarity}
+print("Roots")
+roots(var_est)
+```
+
+# ベイズ推定
+
+**スカラー**
+
+$M$ 変数の VAR($p$) モデルは次のように書ける：
+
+$$
+y_t = a_0 + \sum_{j=1}^{p} A_j y_{t-j} + \varepsilon_t \qquad (2.1)
+$$
+
+ここで、
+
+- $y_t$ は $M \times 1$ の内生変数ベクトル
+- $a_0$ は $M \times 1$ の定数項
+- $A_j$ は $M \times M$ の係数行列
+- 誤差項は $\varepsilon_t \stackrel{i.i.d.}{\sim} N(0, \Sigma)$。
+
+**行列形式**
+
+各時点の回帰変数を $x_t = (1, y_{t-1}', \ldots, y_{t-p}')'$ と定義する。これを $T$ 期間分スタックして、
+
+$$
+X =\begin{bmatrix} x_1'\\ x_2'\\ \vdots\\ x_T' \end{bmatrix} \qquad (2.2)
+$$
+とする。また、以下を定義する：
+
+- $K = 1 + Mp$（各方程式の説明変数の数）
+- $A = (a_0, A_1, \ldots, A_p)'$：$K \times M$ の係数行列
+- $Y$ は $T \times M$ の被説明変数行列
+- $E$ は対応する誤差行列
+
+$T$ 期間のデータをまとめると、VAR は次のように書ける：
+
+$$
+\underbrace{Y}_{T \times M} = \underbrace{X}_{T \times K} \underbrace{A}_{K \times M} + E \qquad (2.3)
+$$
+
+**vec形式**
+
+式 (2.3) をベクトル化すると、
+
+$$
+y = \underbrace{(I_M \otimes X)}_{\begin{equation}\quad \,\,\, TM \times KM \\ \begin{bmatrix}X & 0 & \dots & 0\\  0 & X &\dots & 0 \\ \vdots & \vdots & \ddots & \vdots \\ 0 & 0 & \dots & X \end{bmatrix} \end{equation}}\underbrace{\alpha}_{KM \times 1} + \varepsilon \qquad (2.4)
+$$
+と書ける。ここで、
+
+- $y = \mathrm{vec}(Y)$
+- $\alpha = \mathrm{vec}(A)$：$KM \times 1$ の係数ベクトル
+- $\varepsilon = \mathrm{vec}(E)$
+- 誤差項は $\varepsilon \sim N(0, \Sigma \otimes I_T)$。
+
+以下では、行列形式・vec形式のデータを定義している。
+
+- ラグ数（$p$）、内生変数の数（$M$）、説明変数の数（$K \equiv pM + 1$）、時系列観測数（$T$ or `TT`）
+
+```{r SET parameter, class.source = 'fold-show'}
+p <- p # num of lags
+M <- 3 # num of vars
+K <- 1+M*p # num of total endos
+TT <- NROW(df_var)-p # num of time obs.
+```
+
+- $Y \,(T \times M)$、$X \,(T \times K)$、$y \, (TM \times 1)$、$I_M \otimes X \, (TM \times KM)$
+
+  `make_varmat_KK`関数の定義
+  
+```{r FUN make variant kk}
+make_varmat_KK <- function(df, vars, p, add_const = TRUE) {
+  stopifnot(p >= 1)
+  stopifnot(all(vars %in% colnames(df)))
+
+  T_df <- NROW(df)
+  M <- length(vars)
+
+  # Y: (T-p) x M  (drop first p observations)
+  Y <- df[(p + 1):T_df, vars, drop = F] %>% as.matrix()
+  # y = vec(Y) in column-major order
+  y <- as.vector(Y)
+
+  # X: (T-p) x K  (const + lagged regressors)
+  X_list <- lapply(1:p, function(lag) {
+    tmp <- df[(p + 1 - lag):(T_df - lag), vars, drop = F]
+    colnames(tmp) <- paste0(vars, ".l", lag)
+    tmp
+  })
+  X <- dplyr::bind_cols(X_list)
+  if (add_const) X <- dplyr::bind_cols(const = 1, X)
+  X <- as.matrix(X)
+  # Xbig = I_M kron X
+  I_M <- diag(M)
+  Xbig <- kronecker(I_M, X)
+
+  list(Y = Y, y = y, X = X, Xbig = Xbig)
+}
+```
+  
+  `make_varmat_KK`関数により$Y$、$X$、$y$、$I_M \otimes X$を定義
+
+```{r SET data matrix, class.source = 'fold-show'}
+vm <- make_varmat_KK(df_var, vars = vars, p = p, add_const = T)
+
+Y <- vm$Y; X <- vm$X; y <- vm$y; Xbig <- vm$Xbig
+```
+
+```{r EXP dimension}
+print("dim Y"); print(dim(Y)) 
+print("dim X"); print(dim(X)) 
+print("dim y"); print(dim(matrix(y, ncol = 1)))
+print("dim Im Kron X"); print(dim(Xbig)) 
+```
+
+```{r REG ols result}
+A_OLS <- solve(t(X) %*% X) %*% t(X) %*% Y
+alpha_OLS <- solve(t(Xbig) %*% Xbig) %*% t(Xbig) %*% y
+```
+
+## ミネソタ事前分布
+
+モデル再掲：
+
+$$
+y = (I_M \otimes X)\alpha + \varepsilon, \qquad \varepsilon \sim N(0, \Sigma \otimes I_T)
+$$
+
+Minnesota Prior では、係数ベクトル $\alpha \, (KM \times 1)$ に対して次の正規事前分布を仮定する：
+
+$$
+\alpha|\Sigma \sim N(\underline{\alpha}_{Mn}, \underline{V}_{Mn}), 
+$$
+
+- $\underline{\alpha}$ は事前平均ベクトル
+- $\underline{V}$ は事前分散行列（通常は対角行列
+
+### Known variance
+
+Minnesota Prior では、誤差項の共分散行列は既知とする。ここでは、OLS推定値を使用する。
+
+$$
+\Sigma = \hat{\Sigma}
+$$
+
+```{r SET minnesota sigma, class.source = 'fold-show'}
+Omega_Mn <- summary(var_est)$covres
+```
+
+```{r FUN gt function}
+gt_basic <- function(df, title = NULL, decimals = 2) {
+  gt::gt(df) %>%
+    gt::fmt_number(decimals = decimals) %>%
+    gt::tab_header(title = title)
+}
+```
+
+```{r EXP minnesota sigma}
+as_tibble(Omega_Mn, rownames = " ") %>%
+  gt_basic(title = "Omega (Minnesota Prior)", decimals = 2)
+```
+
+### Prior on coefficients
+
+係数の事前平均は、次のように設定される。
+
+> Thus, $\underline{\alpha}_{Mn} = 0_{KM}$ except for the elements corresponding to the first own lag of the dependent variable in each equation. These elements are set to one. These are the traditional choices for $\underline{\alpha}_{Mn}$, but anything is possible.
+
+すなわち、事前平均ベクトル $\underline{\alpha}_{Mn}$は基本的にゼロベクトルであるが、**各方程式における自分自身の第1ラグの係数のみ 1** に設定される。係数 $\beta_{i,j,l}$（第 $i$ 方程式における、第 $j$ 変数の第 $l$ ラグ）について書けば、
+
+$$
+E(\beta_{i,j,1}) =
+\begin{cases}
+1 & (i=j) \\
+0 & (i\neq j)
+\end{cases},
+\qquad
+E(\beta_{i,j,l}) = 0 \quad (l \ge 2)
+$$
+
+となる。
+
+### 事前分散（prior variance）
+
+Koop and Korobilis (2010) の式 (2.8)に従い、係数の事前分散は次のように設定される。
+
+$$
+\underline{V}_{Mn, i,jj} = \begin{cases}
+\displaystyle \frac{a_1^2}{r^2}
+& \text{for coefficiencts on own lag } r \text{ for } r = 1, \dots, p  \\[1em]
+\displaystyle \frac{a_2^2}{r^2}
+\frac{\sigma_i^2}{\sigma_j^2}
+& \text{for coefficiencts on lag } r \text{ of variable } j \neq i \\
+&\text{ for }r = 1, \dots, p\\[1em]
+a_3^2 \sigma_i^2 
+& \text{for coefficients on exogenous variables}
+\end{cases}
+\qquad (2.8)
+$$
+
+各ハイパーパラメータの意味は以下の通りである。
+
+- $a_1$：**自己ラグ（own lag）** に対する縮小パラメータ  
+- $a_2$：**他変数ラグ（cross lag）** に対する縮小パラメータ  
+- $a_3$：**定数項**に対する縮小パラメータ
+- $r$：ラグの次数  
+- $\sigma_i^2$：方程式 $i$ の誤差分散
+
+この分散構造により、高次ラグほど、また他変数のラグほど、係数はより強くゼロへと縮小される。
+
+
+$\underline{V}_{Mn}$の構造をvisualizeすると、以下の通り。
+
+$$
+\underline{V}_{Mn} = \begin{bmatrix}
+\underline{V}_1 & \mathbf{0} & \cdots & \mathbf{0} \\
+\mathbf{0} & \underline{V}_2 &  & \vdots \\
+\vdots &  & \ddots & \mathbf{0} \\
+\mathbf{0} & \cdots & \mathbf{0} & \underline{V}_M
+\end{bmatrix}
+$$
+
+$$
+\underline{V}_i = \text{diag} \left( 
+\underbrace{a_3^2 \sigma_i^2}_{\text{Constant}}, \quad 
+\underbrace{v_{i, 1}^{(1)}, v_{i, 2}^{(1)}, \dots, v_{i, M}^{(1)}}_{\text{Lag } r=1}, \quad 
+\dots, \quad 
+\underbrace{v_{i, 1}^{(p)}, v_{i, 2}^{(p)}, \dots, v_{i, M}^{(p)}}_{\text{Lag } r=p} 
+\right)
+$$
+
+例えば、第1方程式 ($i=1$) の対角要素を具体的に書き出すと、
+
+$$
+\underline{V}_1 = \begin{bmatrix}
+a_3^2 \sigma_1^2 & 0 & 0 & \cdots & 0 \\
+0 & \frac{a_1^2}{1^2} & 0 & \cdots & 0 \\
+0 & 0 & \frac{a_2^2}{1^2} \frac{\sigma_1^2}{\sigma_2^2} &  & \vdots \\
+\vdots & \vdots &  & \ddots & 0 \\
+0 & 0 & \cdots & 0 & \frac{a_2^2}{p^2} \frac{\sigma_1^2}{\sigma_M^2}
+\end{bmatrix}
+$$
+
+以下は、Minnesota Prior $\underline{\alpha}_\text{Mn}$と$\underline{V}_\text{Mn}$を設定するコード。
+
+```{r REG minnesota prior, class.source = 'fold-show'}
+### hyperparamters
+a1 <- 1; a2 <- 0.5; a3 <- 0.1
+
+### alpha
+alpha_Mn <- matrix(0, M*K, 1)
+alpha_Mn[c(0*K+1+1, 1*K+2+1, 2*K+3+1)] <- 1
+
+### V
+V_Mn_diag <- rep(NA, M*K)
+
+# lag decay part (common across equations)
+V_Mn_r <- c(1, rep((1:p)^(-2), each = M)) 
+
+# a and sigma part (DIFFERENT across equations)
+for (i in 1:M) {
+  V_Mn_asigma <- rep(NA_real_, K)
+  
+  V_Mn_asigma[1] <- a3^2 * Omega_Mn[i,i] # constant
+
+  for (j in 1:M) {
+    idx_j <- 1 + j + (0:(p-1)) * M # positions of variable j
+    if (i == j) {
+      V_Mn_asigma[idx_j] <- a1^2
+    } else {
+      V_Mn_asigma[idx_j] <- a2^2 * Omega_Mn[i,i] / Omega_Mn[j,j]
+    }
+  }
+  V_Mn_diag[(1 + (i-1)*K):(i*K)] <- V_Mn_r * V_Mn_asigma
+  
+}
+
+V_Mn <- diag(V_Mn_diag)
+```
+
+```{r FUN unvec}
+unvec <- function(alpha, M, p, vars = NULL, add_const = TRUE,
+                               lag_prefix = "", lag_sep = ".l") {
+  alpha_vec <- as.vector(alpha)
+
+  K <- (if (add_const) 1L else 0L) + M * p
+  stopifnot(length(alpha_vec) == K * M)
+
+  # A: K x M  (rows = regressors, cols = equations)
+  A <- matrix(alpha_vec, nrow = K, ncol = M, byrow = FALSE)
+
+  if (!is.null(vars)) {
+    stopifnot(length(vars) == M)
+    colnames(A) <- vars
+
+    rn <- character(0)
+    if (add_const) rn <- c(rn, "const")
+
+    for (r in 1:p) {
+      rn <- c(rn, paste0(lag_prefix, vars, lag_sep, r))
+    }
+    rownames(A) <- rn
+  }
+
+  # a0, A1..Ap
+  a0 <- if (add_const) matrix(A[1L, ], ncol = 1) else matrix(0, nrow = M, ncol = 1)
+
+  A_list <- vector("list", p)
+  for (r in 1:p) {
+    row_start <- (if (add_const) 2L else 1L) + (r - 1L) * M
+    row_end   <- row_start + M - 1L
+    B <- A[row_start:row_end, , drop = FALSE] # rows: vars, cols: equations
+    A_r <- t(B)                               # rows: equations, cols: vars
+
+    if (!is.null(vars)) {
+      rownames(A_r) <- vars
+      colnames(A_r) <- vars
+    }
+    A_list[[r]] <- A_r
+  }
+  names(A_list) <- paste0("A", 1:p)
+
+  list(K = K, A = A, a0 = a0, A_list = A_list)
+}
+```
+
+```{r PRE prior exp prep}
+A_Mn_unvec <- unvec(alpha_Mn, M = M, p = p, add_const = 1, vars = vars)
+V_Mn_unvec <- unvec(diag(V_Mn), M = M, p = p, add_const = 1, vars = vars)
+V_Mn_unvec_sorted <- V_Mn_unvec$A[coef_names_byvars, , drop = FALSE]
+```
+
+以下の通り、$\underline{\alpha}_\text{Mn}$はシンプル。
+
+```{r EXP alpha}
+A_Mn_unvec$A %>% 
+  as_tibble(rownames = "Coef") %>% 
+  gt_basic(title = "A prior", decimals = 2)
+```
+
+$\underline{V}_\text{Mn}$は、方程式によりスケールが異なる点がポイント（Natural conjugate priorだとこの形は実現不可）。
+
+```{r EXP V}
+V_Mn_unvec_sorted %>% 
+  as_tibble(rownames = "Coef") %>% 
+  gt_basic(title = "V prior (diag. element)", decimals = 2)
+
+rbind(diag(V_Mn)[1:16],diag(V_Mn)[17:32],diag(V_Mn)[33:48]) %>% 
+  `colnames<-`(coef_names_A) %>% 
+  as_tibble() %>% 
+  transmute(Block = c("V_1", "V_2", "V_3"), across(everything())) %>% 
+  gt_basic(title = "V prior (by the exact order)", decimals = 2)
+```
+
+## 事後分布
+
+誤差分散共分散行列 $\Sigma$ が既知のため、Minnesota prior と正規尤度の共役性により、事後分布は正規分布となる。
+
+$$
+\alpha \mid y, \Sigma \sim N\!\left( \bar{\alpha}_{Mn}, \bar{V}_{Mn} \right)
+$$
+
+ここで、事後分散行列は
+
+$$
+\bar{V}_{Mn} = \left( \underline{V}_{Mn}^{-1} + \Sigma^{-1} \otimes X'X \right)^{-1}
+$$
+
+```{r REG minnesota v, class.source = 'fold-show'}
+V_Mn_post <- solve(solve(V_Mn)+kronecker(solve(Omega_Mn), t(X) %*% X))
+```
+
+事後平均は
+
+$$
+\bar{\alpha}_{Mn} =\bar{V}_{Mn} \left( \underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}+ (\Sigma^{-1} \otimes X')y \right)
+$$
+
+```{r REG minnesota alpha, class.source = 'fold-show'}
+alpha_Mn_post <- V_Mn_post %*% (solve(V_Mn) %*% alpha_Mn + kronecker(solve(Omega_Mn), t(X)) %*% y)
+A_Mn_post <- matrix(as.vector(alpha_Mn_post), nrow = K, ncol = M, byrow = F)
+rownames(A_Mn_post) <- coef_names_A
+colnames(A_Mn_post) <- vars
+```
+
+で与えられる。
+
+**Minnesota prior は、OLS 推定量を事前平均の方向へ縮小する役割を果たし、  特に高次ラグおよび他変数のラグに対して強い縮小を課すことで、高次元 VAR における過剰パラメータ化を防ぐ。**
+
+```{r EXP minnesota result}
+tibble(
+  Equation = rep(vars, each = K),
+  Coef = rep(coef_names_A, M),
+  OLS = as.vector(alpha_OLS), 
+  `Minn. Prior` = as.vector(alpha_Mn), 
+  Posterior = as.vector(alpha_Mn_post)) %>% 
+  mutate(`Diff (abs - abs)` = abs(Posterior) - abs(OLS)) %>%
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
+  arrange(Coef) %>% 
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（点推定値；OLS v.s. Minnesota Prior）", decimals = 2)
+```
+
+```{r EXP minnesota shrinkage}
+# 1) OLSとPosteriorを縦持ちにする
+df_ols <- as.data.frame(A_OLS) |>
+  mutate(term = coef_names_A) |>
+  pivot_longer(-term, names_to = "eq", values_to = "coef") |>
+  mutate(method = "OLS")
+
+df_post <- as.data.frame(A_Mn_post)
+colnames(df_post) <- vars
+df_post <- df_post |>
+  mutate(term = coef_names_A) |>
+  pivot_longer(-term, names_to = "eq", values_to = "coef") |>
+  mutate(method = "Posterior")
+
+df <- bind_rows(df_ols, df_post) |>
+  # 定数は除外（ラグ軸に載らないので）
+  filter(term != "const") |>
+  # term から「説明変数」と「ラグ」を抽出（例: lRGDP.l3 -> var=lRGDP, lag=3）
+  mutate(
+    var = str_replace(term, "\\.l\\d+$", ""),
+    lag = as.integer(str_extract(term, "(?<=\\.l)\\d+"))
+  )
+
+# 2) 3変数×3方程式（=9パネル）に絞る（必要なら）
+# ここで var の順序を指定して見やすくする
+var_levels <- c("lRGDP", "lDEF", "FF")
+df <- df %>%
+  mutate(
+    var = factor(var, levels = var_levels),
+    method = factor(method, levels = c("OLS", "Posterior"))
+  )
+
+# 方程式ごとにプロットを作って表示（3パネル：説明変数）
+plots <- lapply(levels(factor(df$eq)), function(eq_i) {
+
+  dfi <- df %>% filter(eq == eq_i)
+
+  ggplot(dfi, aes(x = lag, y = coef, linetype = method, shape = method, group = method)) +
+    geom_hline(yintercept = 0) +
+    geom_line() +
+    geom_point(size = 1.6) +
+    scale_x_continuous(breaks = sort(unique(dfi$lag))) +
+    facet_wrap(~ var, nrow = 3, scales = "free_y") +
+    labs(
+      x = "Lag",
+      y = "Coefficient",
+      linetype = "",
+      shape = "",
+      title = paste0("Equation: ", eq_i, " — OLS vs Minnesota Posterior"),
+      subtitle = "Panels (free y-scale): regressors lRGDP, lDEF, FF"
+    ) +
+    theme_bw()
+})
+
+# すべて表示
+for (g in plots) print(g)
+```
+
+## ミネソタ事前分布（ダミー観測値）
+
+### マッピング
+
+VAR($p$) モデルのベクトル化（再掲）は、
+
+$$
+y = \underbrace{(I_M \otimes X)}_{TM\times KM} \alpha + \varepsilon, \qquad \varepsilon \sim N(0,\; \underbrace{\Sigma}_{M\times M}\otimes I_T) \tag{5.2.9}
+$$
+
+Kilian and Lütkepohl (2016) のとおり、係数ベクトル $\alpha = \mathrm{vec}(A)$ に対する正規事前分布は、次の **dummy observation（mixed estimation）形式**で表現できる：
+
+$$
+\underbrace{C}_{KM\times KM}\alpha = \underbrace{c}_{KM\times 1} + e, \qquad e \sim N(0, I) \tag{5.2.8}
+$$
+
+- $C$ ：事前分散行列の精度に対応する行列
+- $c$ ：事前平均に対応するベクトル
+
+事前分布$\alpha \sim N(\underline{\alpha}_{Mn}, \underline{V}_{Mn})$と次ように対応づける：
+
+$$
+\underline{V}_{Mn} = (C'C)^{-1}, \qquad \underline{\alpha}_{Mn} = C^{-1}c.
+$$
+
+すなわち、
+$$
+C = \underline{V}_{Mn}^{-1/2}, \qquad c = C\underline{\alpha}_{Mn}
+$$ 
+
+```{r REG minn dummy mapping, class.source = 'fold-show'}
+Cinv <- chol(V_Mn)
+# round(Cinv %*% (t(Cinv)),4)==round(V_Mn,4)
+C <- solve(Cinv)
+c <- C %*% alpha_Mn
+```
+
+
+### 拡張回帰
+
+上のマッピングを用いると、対応するMinnesota Priorの事後分布は下記のように書き換えられる。
+
+$$
+\begin{aligned}
+\bar{V}_{Mn} &= \left(\underbrace{C'C}_{\underline{V}_{Mn}^{-1}}+  \underbrace{(\Sigma^{-1}\otimes X'X)}_{\text{likelihoodprecision}}\right)^{-1}\\
+\bar{\alpha}_{Mn} &= \bar{V}_{Mn} \left(\underbrace{C'c}_{\underline{V}_{Mn}^{-1}\underline{\alpha}_{Mn}}+ (\Sigma^{-1}\otimes X')y \right).
+\end{aligned}
+$$
+
+これは、**prior を dummy observation として加えた拡張回帰モデルのGLS推定量**である。すなわち、Minnesota prior を用いた Bayesian VAR は、
+
+> **「本来のデータに、prior に由来する dummy observation を加えた GLS 推定」**
+
+として解釈できる。
+
+$$
+\begin{aligned}
+\underbrace{\begin{bmatrix}y \\ c\end{bmatrix}}_{(TM+KM)\times 1}
+&= \underbrace{ \begin{bmatrix} I_M \otimes X \\ C \end{bmatrix} }_{(TM+KM)\times KM} \alpha + \underbrace{ \begin{bmatrix} \varepsilon \\ e \end{bmatrix} }_{(TM+KM)\times 1}, \\
+\begin{bmatrix} \varepsilon \\ e \end{bmatrix} &\sim
+N\!\left( 0,\; \underbrace{ \begin{bmatrix} \Sigma \otimes I_T & 0 \\ 0 & I \end{bmatrix} }_{\Omega} \right).
+\end{aligned}
+$$
+
+### R コード
+
+```{r REG minn dummy reg, class.source = 'fold-show'}
+# dummy data matrix
+y_dum <- rbind(matrix(y, ncol = 1), c)
+Xbig_dum <- rbind(Xbig, C)
+
+n_data  <- length(y)     # = TT*M
+n_prior <- nrow(C)       # = K*M
+
+# vcov matrix
+Omega_data_inv  <- kronecker(solve(Omega_Mn), diag(TT))
+Omega_prior_inv <- diag(n_prior)
+Omega_inv <- matrix(0, n_data + n_prior, n_data + n_prior)
+Omega_inv[1:n_data, 1:n_data] <- Omega_data_inv
+Omega_inv[(n_data+1):(n_data+n_prior), (n_data+1):(n_data+n_prior)] <- Omega_prior_inv
+```
+
+```{r REG minn dummy, class.source = 'fold-show'}
+# GLS estimator on augmented system
+# alpha_gls = (X' Ω^{-1} X)^{-1} X' Ω^{-1} y
+Xt_Oinv <- t(Xbig_dum) %*% Omega_inv
+alpha_Mn_gls_dummy <- solve(Xt_Oinv %*% Xbig_dum, Xt_Oinv %*% y_dum)
+
+# compare with closed-form posterior mean
+diff_vec <- as.vector(alpha_Mn_post - alpha_Mn_gls_dummy)
+cat("Max abs diff (closed-form vs GLS dummy): ", max(abs(diff_vec)), "\n")
+cat("Mean abs diff: ", mean(abs(diff_vec)), "\n")
+
+# optional: reshape to K x M for readability
+A_Mn_gls_dummy <- matrix(as.vector(alpha_Mn_gls_dummy), nrow = K, ncol = M, byrow = FALSE)
+colnames(A_Mn_gls_dummy) <- vars
+rownames(A_Mn_gls_dummy) <- coef_names_A
+```
+
+## Sum-of-coefficients prior
+
+*Loosely speaking, the objective of these additional priors is to reduce the importance of the determin- istic component implied by the VARs estimated conditioning on the initial observations (Sims, 1992a)* (GLP 2015, p 440)
+
+The setting follows Kilian and Lutkepohl (2016, pp159).
+
+```{r REG soc dummy, class.source='fold-show'}
+mu_soc <- colMeans(df_var[(1:p) ,vars])
+tau_soc <- 1
+Ydum_soc <- diag(mu_soc)/tau_soc
+Xdum_soc <- t(rbind(matrix(0, nrow = 1, ncol = M), kronecker(matrix(1, nrow = p, ncol = 1), diag(mu_soc)/tau_soc)))
+```
+
+今回の例では、以下のようなダミーが設定される。
+
+- $Y \, (M \times K \, \text{or} \,3 \times 3)$
+
+```{r EXP soc dummy y}
+print(Ydum_soc)
+```
+
+- $X \, (M \times K \, \text{or} \,3 \times 16)$
+
+```{r EXP soc dummy x}
+print(Xdum_soc)
+```
+
+posterior は以下の通り。
+
+```{r REG soc dummy posterior, class.source='fold-show'}
+Y_soc <- rbind(Y, Ydum_soc)
+X_soc <- rbind(X, Xdum_soc)
+A_soc <- solve(t(X_soc) %*% X_soc) %*% t(X_soc) %*% Y_soc
+colnames(A_soc) <- vars
+```
+
+ルーティン化するため `estimate_A_soc` を定義（のちにも使用）
+
+```{r FUN soc dummy regression, class.source='fold-show'}
+estimate_A_soc <- function(train_df, vars, p, tau = 1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  M <- length(vars)
+
+  mu <- colMeans(train_df[1:p, vars, drop=FALSE])
+  Yd <- rbind(Y, diag(mu)/tau)
+  Xd <- rbind(X,
+              t(rbind(matrix(0, nrow=1, ncol=M),
+                      kronecker(matrix(1, nrow=p, ncol=1), diag(mu)/tau))))
+
+  A <- solve(crossprod(Xd), crossprod(Xd, Yd))
+  colnames(A) <- vars
+  A
+}
+```
+
+### $\tau$ の役割
+
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響大→**自己ラグの係数の和が1に近づく**
+
+- $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
+
+```{r REG soc dummy different tau, class.source='fold-show'}
+A_soc_bigtau <- estimate_A_soc(df_var, vars, p, tau = 10^4)
+A_soc_smalltau <- estimate_A_soc(df_var, vars, p, tau = 10^(-4))
+```
+
+```{r EXP soc dummy different tau}
+tibble(
+  Equation = rep(vars, each = K),
+  Coef = rep(coef_names_A, M),
+  `tau = 1 `= as.vector(A_soc),
+  `small tau`= as.vector(A_soc_smalltau),
+  `big tau`= as.vector(A_soc_bigtau),
+  OLS = as.vector(alpha_OLS)) %>% 
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
+  arrange(Coef) %>% 
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（SOC prior v.s. OLS）", decimals = 2) %>% 
+  tab_spanner(columns = c(3:5), label = "SOC prior")
+```
+
+## Innitial dummy observations prior
+
+（セットアップの解説）
+
+The setting follows Kilian and Lutkepohl (2016, pp159).
+
+```{r REG dobs dummy, class.source='fold-show'}
+mu_dobs <- colMeans(df_var[(1:p) ,vars])
+tau_dobs <- 1
+Ydum_dobs <- mu_dobs/tau_dobs
+Xdum_dobs <- c(1, rep(mu_dobs/tau_dobs, p))
+```
+
+今回の例では、以下のようなダミーが設定される。
+
+- $Y \, (M \times K \, \text{or} \,1 \times 3)$
+
+```{r EXP dobs dummy y}
+print(Ydum_dobs)
+```
+
+- $X \, (M \times K \, \text{or} \,1 \times 16)$
+
+```{r EXP dobs dummy x}
+print(Xdum_dobs)
+```
+
+posterior は以下の通り。
+
+```{r REG dobs dummy posterior, class.source='fold-show'}
+Y_dobs <- rbind(Y, Ydum_dobs)
+X_dobs <- rbind(X, Xdum_dobs)
+A_dobs <- solve(t(X_dobs) %*% X_dobs) %*% t(X_dobs) %*% Y_dobs
+colnames(A_dobs) <- vars
+```
+
+ルーティン化するため `estimate_A_dobs` を定義（のちにも使用）
+
+```{r FUN dobs dummy regression, class.source='fold-show'}
+estimate_A_dobs <- function(train_df, vars, p, tau = 1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  M <- length(vars)
+
+  # KL dummy observations prior (dummy obs)
+  # use the first p observations *in Y* (i.e. after removing initial lags)
+  mu <- colMeans(train_df[1:p, vars, drop = FALSE])
+
+  Y_dobs <- rbind(Y, matrix(mu / tau, nrow = 1))
+  X_dobs <- rbind(X, matrix(c(1, rep(mu / tau, p)), nrow = 1))
+
+  A <- solve(crossprod(X_dobs), crossprod(X_dobs, Y_dobs))
+  colnames(A) <- vars
+  A
+}
+```
+
+### $\tau$ の役割
+
+- $\tau$が小さい（e.g. $10^{-4}$）→prior影響の影響大→**自己ラグの係数の和が1に近づく**
+
+- $\tau$が大きい（e.g. $10^4$）→prior影響の影響小→OLSに近づく
+
+```{r REG dobs dummy different tau, class.source='fold-show'}
+A_dobs_bigtau <- estimate_A_dobs(df_var, vars, p, tau = 10^4)
+A_dobs_smalltau <- estimate_A_dobs(df_var, vars, p, tau = 10^(-4))
+```
+
+```{r EXP dobs dummy different tau}
+tibble(
+  Equation = rep(vars, each = K),
+  Coef = rep(coef_names_A, M),
+  `tau = 1 `= as.vector(A_dobs),
+  `small tau`= as.vector(A_dobs_smalltau),
+  `big tau`= as.vector(A_dobs_bigtau),
+  OLS = as.vector(alpha_OLS)) %>% 
+  mutate(Coef = factor(Coef, levels = coef_names_byvars)) %>%
+  arrange(Coef) %>% 
+  group_by(Equation) %>% 
+  gt_basic(title = "推計結果（Dummy Obs. prior v.s. OLS）", decimals = 2) %>% 
+  tab_spanner(columns = c(3:5), label = "Dummy Obs. prior")
+```
+
+## パフォーマンス比較 （OLS, Minnesota, SOC, Dummy Obs.)
+
+```{r SET moromoro}
+model_name <- c("OLS", "Minnesota", "SOC", "Dummy Obs.")
+col_map <- c("#000000", "#1f77b4", "#ff7f0e", "#2ca02c","red")
+names(col_map) <- c("Actual", model_name)
+col_map_se <- col_map[c("OLS", "Minnesota", "SOC")]
+
+lt_map <- c("solid", "solid", "dashed", "dotdash","dotdash")
+names(lt_map) <- c("Actual", model_name)
+lw_map <- c(1.2, 0.9, 0.9, 0.9, 0.9)
+names(lw_map) <- c("Actual", model_name)
+```
+
+### フィットと先行きのパス
+
+```{r FUN make forecast}
+# forecastを計算
+make_var_fit_forecast <- function(df, date_col = "date", vars, p, A, h = 40, add_const = TRUE) {
+  stopifnot(all(c(date_col, vars) %in% names(df)))
+  stopifnot(is.matrix(A))
+  stopifnot(ncol(A) == length(vars))
+
+  df <- df |> arrange(.data[[date_col]])
+  Ymat <- as.matrix(df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat)
+  M <- length(vars)
+  K <- (if (add_const) 1L else 0L) + M * p
+  stopifnot(nrow(A) == K)
+
+  # 1行の regressor を作る：x_t = (1, vec([y_{t-1},...,y_{t-p}])) の順（lagごとに vars を並べる）
+  make_x <- function(lag_block) {
+    # lag_block: p x M, rows = (t-1, t-2, ..., t-p), cols = vars
+    x_no_const <- as.vector(t(lag_block))  # lag1の(vars順) -> lag2 -> ...（あなたの X と一致）
+    if (add_const) c(1, x_no_const) else x_no_const
+  }
+
+  # --- in-sample fitted ---
+  fitted <- matrix(NA_real_, nrow = T_df, ncol = M)
+  for (t in (p + 1):T_df) {
+    lag_block <- Ymat[(t - 1):(t - p), , drop = FALSE]
+    x_t <- make_x(lag_block)
+    fitted[t, ] <- as.numeric(x_t %*% A)
+  }
+
+  # --- recursive point forecast h-step ahead ---
+  # 初期ラグは「最後の p 期の実績」を使う（必要なら fitted を使う版も作れるが、標準は実績）
+  hist <- Ymat[(T_df):(T_df - p + 1), , drop = FALSE]  # rows: T, T-1, ... の順
+  fc <- matrix(NA_real_, nrow = h, ncol = M)
+
+  for (s in 1:h) {
+    # make_x は rows=(t-1,...,t-p) を想定。hist は rows=(latest, ..., older) なのでそのまま使える
+    x_s <- make_x(hist[1:p, , drop = FALSE])
+    y_next <- as.numeric(x_s %*% A)
+    fc[s, ] <- y_next
+    hist <- rbind(y_next, hist)  # 先頭に追加してラグ更新
+  }
+
+  # 日付：四半期の末日が入っている前提で、次期以降を seq で作る
+  last_date <- df[[date_col]][T_df]
+  fc_dates <- seq(from = last_date, by = "quarter", length.out = h + 1)[-1]
+
+  list(
+    in_sample = tibble(
+      date = df[[date_col]],
+      !!!setNames(as.data.frame(Ymat), vars),
+      !!!setNames(as.data.frame(fitted), paste0(vars, "_fitted"))
+    ),
+    forecast = tibble(
+      date = fc_dates,
+      !!!setNames(as.data.frame(fc), paste0(vars, "_forecast"))
+    )
+  )
+}
+
+# 1) 各手法の「fitted+forecast」を1本に結合した series を作る
+mk_method_series <- function(res, method, vars) {
+  # in-sample fitted: date, var_fitted
+  df_fit <- res$in_sample |>
+    dplyr::select(date, ends_with("_fitted")) |>
+    pivot_longer(-date, names_to = "name", values_to = "value") |>
+    mutate(var = str_remove(name, "_fitted")) |>
+    dplyr::select(date, var, value)
+
+  # forecast: date, var_forecast
+  df_fc <- res$forecast |>
+    pivot_longer(-date, names_to = "name", values_to = "value") |>
+    mutate(var = str_remove(name, "_forecast")) |>
+    dplyr::select(date, var, value)
+
+  bind_rows(df_fit, df_fc) |>
+    mutate(method = method)
+}
+```
+
+#### レベル
+
+```{r REG forecast}
+h <- 40 # h = 1000でもSOCは収束しない（ダラダラと下がり続ける）
+
+res_ols  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_OLS,     h = h)
+res_mn   <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_Mn_post, h = h)
+res_soc  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_soc,  h = h)
+res_dobs  <- make_var_fit_forecast(df_var, vars = vars, p = p, A = A_dobs,  h = h)
+
+df_actual <- df_var |>
+  dplyr::select(date, all_of(vars)) |>
+  pivot_longer(-date, names_to = "var", values_to = "value") |>
+  mutate(method = "Actual")
+
+df_ols_series <- mk_method_series(res_ols, model_name[1], vars)
+df_mn_series  <- mk_method_series(res_mn,  model_name[2], vars)
+df_soc_series <- mk_method_series(res_soc, model_name[3], vars)
+df_dobs_series <- mk_method_series(res_dobs, model_name[4], vars)
+
+df_fcst_all <- bind_rows(
+  df_actual,
+  df_ols_series,
+  df_mn_series,
+  df_soc_series,
+  df_dobs_series
+) |>
+  mutate(
+    var = factor(var, levels = vars),
+    method = factor(method, levels = c("Actual", model_name))
+  )
+```
+
+```{r EXP fit in level}
+plots_3 <- lapply(levels(df_fcst_all$var), function(v) {
+  dfi <- df_fcst_all |> dplyr::filter(var == v)
+
+  ggplot(dfi, aes(x = date, y = value, color = method, linetype = method, linewidth = method)) +
+    geom_line() +
+    scale_color_manual(values = col_map) +
+    scale_linetype_manual(values = lt_map) +
+    scale_linewidth_manual(values = lw_map) +
+    labs(
+      title = paste0(v, ": Actual vs OLS/Minnesota/SOC (fitted+forecast)"),
+      x = NULL, y = NULL, color = "", linetype = "", linewidth = ""
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+})
+
+for (g in plots_3) print(g)
+```
+
+#### 差分
+
+```{r FUN for difference}
+# 3つのフィットの R^2 を計算（GDP/物価=階差、金利=レベル）
+
+# R^2 helper（NAは落とす）
+calc_r2 <- function(y, yhat) {
+  ok <- is.finite(y) & is.finite(yhat)
+  y <- y[ok]; yhat <- yhat[ok]
+  if (length(y) < 3) return(NA_real_)
+  sse <- sum((y - yhat)^2)
+  sst <- sum((y - mean(y))^2)
+  if (sst == 0) return(NA_real_)
+  1 - sse / sst
+}
+
+# in-sample の actual と fitted だけを取り出して R^2 を作る
+# - lRGDP, lDEF は diff（成長率）
+# - FF は level
+make_r2_table <- function(df_var, vars,
+                          res_ols, res_mn, res_soc,
+                          date_col = "date") {
+
+  # actual (T x M)
+  act <- as.matrix(df_var[, vars, drop = FALSE])
+
+  # fitted (T x M) : res$in_sample の *_fitted を列順で取る
+  get_fit_mat <- function(res) {
+    mat <- as.matrix(res$in_sample[, paste0(vars, "_fitted"), drop = FALSE])
+    colnames(mat) <- vars
+    mat
+  }
+
+  fit_ols <- get_fit_mat(res_ols)
+  fit_mn  <- get_fit_mat(res_mn)
+  fit_soc <- get_fit_mat(res_soc)
+
+  # 変換：diff する変数
+  diff_vars <- intersect(c("lRGDP", "lDEF"), vars)
+
+  # 各変数ごとに R^2
+  out <- lapply(vars, function(v) {
+    y    <- act[, v]
+    yhat_ols <- fit_ols[, v]
+    yhat_mn  <- fit_mn[, v]
+    yhat_soc <- fit_soc[, v]
+
+    if (v %in% diff_vars) {
+      y        <- c(NA_real_, diff(y))
+      yhat_ols <- c(NA_real_, diff(yhat_ols))
+      yhat_mn  <- c(NA_real_, diff(yhat_mn))
+      yhat_soc <- c(NA_real_, diff(yhat_soc))
+    }
+
+    tibble::tibble(
+      var = v,
+      R2_OLS = calc_r2(y, yhat_ols),
+      R2_Minnesota = calc_r2(y, yhat_mn),
+      R2_SOC = calc_r2(y, yhat_soc)
+    )
+  })
+
+  dplyr::bind_rows(out)
+}
+```
+
+```{r REG rsquare}
+r2_tbl <- make_r2_table(
+  df_var = df_var,
+  vars   = vars,
+  res_ols = res_ols,
+  res_mn  = res_mn,
+  res_soc = res_soc
+)
+```
+
+```{r EXP fit in diff}
+diff_vars <- intersect(c("lRGDP", "lDEF"), levels(df_fcst_all$var))
+
+df_fcst_all_trans <- df_fcst_all |>
+  dplyr::arrange(var, method, date) |>
+  dplyr::group_by(var, method) |>
+  dplyr::mutate(
+    value_trans = dplyr::if_else(
+      var %in% diff_vars,
+      value - dplyr::lag(value),
+      value
+    )
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::filter(!(var %in% diff_vars & is.na(value_trans))) |>
+  dplyr::mutate(value = value_trans) |>
+  dplyr::select(-value_trans)
+
+# 3枚（変数ごと）プロット
+plots_3_trans <- lapply(levels(df_fcst_all_trans$var), function(v) {
+  dfi <- df_fcst_all_trans |> dplyr::filter(var == v)
+
+  ggplot(dfi, aes(x = date, y = value, color = method, linetype = method, linewidth = method)) +
+    geom_line() +
+    scale_color_manual(values = col_map) +
+    scale_linetype_manual(values = lt_map) +
+    scale_linewidth_manual(values = lw_map) +
+    labs(
+      title = paste0(v, ": Actual vs OLS/Minnesota/SOC (fitted+forecast)"),
+      subtitle = if (v %in% diff_vars) "Displayed in first difference (growth-rate); FF is in levels" else "Displayed in levels",
+      x = NULL, y = NULL, color = "", linetype = "", linewidth = ""
+    ) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+})
+
+for (g in plots_3_trans) print(g)
+
+```
+
+#### 長期予測値と最大固有値
+
+SOCを除く各priorでは、長期予測値が波を打ちながら大きく変動する→Sims (1992) の「初期値問題」（Dummy Obs. でも初期値問題は緩和されるはずだが…）
+
+なお、収束の速さは最大固有値からわかる
+
+```{r FUN max eig}
+# Max eigenvalue (spectral radius) of a VAR(p) companion matrix
+# Input:
+#   A  : K x M matrix (rows = regressors [const, lags...], cols = equations)
+#        This matches your A_OLS, A_Mn_post, A_soc style.
+#   p  : lag order
+#   M  : number of variables
+#   add_const : whether the first row of A is const
+# Output:
+#   list(rho = max |lambda|, eig = eigenvalues, companion = F)
+
+var_max_eig <- function(A, p, M, add_const = TRUE, return_companion = FALSE) {
+  A <- as.matrix(A)
+  K_expected <- (if (add_const) 1L else 0L) + M * p
+  stopifnot(nrow(A) == K_expected, ncol(A) == M)
+
+  # --- Extract lag coefficient matrices A1..Ap as M x M ---
+  # Your A is K x M with rows: const, (lag1 vars), ..., (lagp vars)
+  # Each lag block in A is M rows (vars), M cols (equations) => transpose to (equations x vars) = M x M.
+  A_lags <- vector("list", p)
+  for (r in 1:p) {
+    row_start <- (if (add_const) 2L else 1L) + (r - 1L) * M
+    row_end   <- row_start + M - 1L
+    B <- A[row_start:row_end, , drop = FALSE]  # rows: vars, cols: equations
+    A_lags[[r]] <- t(B)                        # rows: equations, cols: vars  => M x M
+  }
+
+  # --- Build companion matrix F of size (Mp) x (Mp) ---
+  Mp <- M * p
+  F <- matrix(0, nrow = Mp, ncol = Mp)
+
+  # top block row: [A1 A2 ... Ap]
+  F[1:M, 1:Mp] <- do.call(cbind, A_lags)
+
+  # subdiagonal identity blocks
+  if (p >= 2) {
+    F[(M + 1):Mp, 1:(Mp - M)] <- diag(Mp - M)
+  }
+
+  # --- Eigenvalues and spectral radius ---
+  eigvals <- eigen(F, only.values = TRUE)$values
+  rho <- max(Mod(eigvals))
+
+  out <- list(rho = rho, eig = eigvals)
+  if (return_companion) out$companion <- F
+  out
+}
+
+# just the max |eig|
+var_spectral_radius <- function(A, p, M, add_const = TRUE) {
+  var_max_eig(A, p = p, M = M, add_const = add_const)$rho
+}
+```
+
+```{r REG max eig}
+# Example:
+rho_ols <- var_spectral_radius(A_OLS, p = p, M = M, add_const = TRUE)
+rho_mn  <- var_spectral_radius(A_Mn_post, p = p, M = M, add_const = TRUE)
+rho_soc <- var_spectral_radius(A_soc, p = p, M = M, add_const = TRUE)
+rho_dobs <- var_spectral_radius(A_dobs, p = p, M = M, add_const = TRUE)
+```
+
+
+```{r EXP max eig}
+print(c(rho_ols, rho_mn, rho_soc, rho_dobs) %>% `names<-`(model_name))
+```
+
+### Out-of-sample 予測
+
+```{r FUN regression functions}
+#  1-step forecast given A and last p actuals 
+var_1step_fc <- function(train_df, vars, p, A, add_const = TRUE) {
+  Ymat <- as.matrix(train_df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat); M <- length(vars)
+
+  # last p obs: rows = (t, t-1, ..., t-p+1)
+  hist <- Ymat[T_df:(T_df - p + 1), , drop = FALSE]
+
+  x_no_const <- as.vector(t(hist))   # lag1 vars -> lag2 vars -> ...
+  x <- if (add_const) c(1, x_no_const) else x_no_const
+
+  drop(x %*% A)  # length M
+}
+
+estimate_A_ols <- function(train_df, vars, p) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  solve(crossprod(X), crossprod(X, Y))
+}
+
+estimate_A_mn_post <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y; y <- vm$y
+  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+
+  # window OLS Sigma
+  A_ols <- solve(crossprod(X), crossprod(X, Y))
+  U <- Y - X %*% A_ols
+  Omega_hat <- crossprod(U) / (TT - K)
+
+  # Minnesota prior mean (general M)
+  alpha0 <- matrix(0, M*K, 1)
+  idx_ownlag1 <- (0:(M-1))*K + (1 + (1:M))
+  alpha0[idx_ownlag1] <- 1
+
+  # Minnesota prior variance diag (general M)
+  Vdiag <- rep(NA_real_, M*K)
+  V_r <- c(1, rep((1:p)^(-2), each = M))
+
+  for (i in 1:M) {
+    tmp <- rep(NA_real_, K)
+    tmp[1] <- (a3^2) * Omega_hat[i,i]  # const
+    for (j in 1:M) {
+      idx_j <- 1 + j + (0:(p-1))*M
+      if (i == j) tmp[idx_j] <- (a1^2)
+      else        tmp[idx_j] <- (a2^2) * (Omega_hat[i,i]/Omega_hat[j,j])
+    }
+    Vdiag[(1+(i-1)*K):(i*K)] <- V_r * tmp
+  }
+
+  Vinv <- diag(1/Vdiag)
+  Oinv <- solve((Omega_hat + t(Omega_hat))/2)
+  H <- Vinv + kronecker(Oinv, crossprod(X))
+  b <- Vinv %*% alpha0 + kronecker(Oinv, t(X)) %*% y
+  alpha_post <- solve(H, b)
+
+  A_post <- matrix(as.vector(alpha_post), nrow = K, ncol = M, byrow = FALSE)
+  colnames(A_post) <- vars
+  A_post
+}
+```
+
+
+```{r olds}
+# estimate A by method on a given training set
+estimate_A_ols_old <- function(train_df, vars, p) {
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y
+  solve(crossprod(X), crossprod(X, Y))
+}
+
+estimate_A_mn_post_old <- function(train_df, vars, p, a1=1, a2=0.5, a3=0.1) {
+  # build X,Y,y
+  vm <- make_varmat_KK(train_df, vars = vars, p = p, add_const = TRUE)
+  X <- vm$X; Y <- vm$Y; y <- vm$y
+  TT <- nrow(Y); M <- length(vars); K <- 1 + M*p
+
+  # OLS Sigma hat (window-specific!)
+  A_ols <- solve(crossprod(X), crossprod(X, Y))
+  U <- Y - X %*% A_ols
+  Omega_hat <- crossprod(U) / (TT - K)
+
+  # Minnesota prior mean alpha0 and Vdiag (あなたのロジックに合わせて作る)
+  alpha0 <- matrix(0, M*K, 1)
+  alpha0[c(0*K+1+1, 1*K+2+1, 2*K+3+1)] <- 1
+
+  # IMPORTANT: a^2 が正しい（ここは直しておくのが筋）
+  Vdiag <- rep(NA_real_, M*K)
+  V_r <- c(1, rep((1:p)^(-2), each = M))
+
+  for (i in 1:M) {
+    tmp <- rep(NA_real_, K)
+    tmp[1] <- (a3^2) * Omega_hat[i,i]
+    for (j in 1:M) {
+      idx_j <- 1 + j + (0:(p-1))*M
+      if (i == j) tmp[idx_j] <- (a1^2)
+      else        tmp[idx_j] <- (a2^2) * (Omega_hat[i,i]/Omega_hat[j,j])
+    }
+    Vdiag[(1+(i-1)*K):(i*K)] <- V_r * tmp
+  }
+
+  # posterior mean via solving linear system (avoid explicit inverses)
+  Vinv <- diag(1/Vdiag)
+  Oinv <- solve((Omega_hat + t(Omega_hat))/2)  # 必要なら jitter 版へ
+  H <- Vinv + kronecker(Oinv, crossprod(X))
+  b <- Vinv %*% alpha0 + kronecker(Oinv, t(X)) %*% y
+  alpha_post <- solve(H, b)
+
+  A_post <- matrix(as.vector(alpha_post), nrow = K, ncol = M, byrow = FALSE)
+  colnames(A_post) <- vars
+  A_post
+}
+
+```
+
+```{r FUN whole process}
+msfe_1step_expanding <- function(df_long, vars, p,
+                                 train_start = as.Date("1980-01-01"),
+                                 train_end0  = as.Date("1994-12-31"),
+                                 model_name = c("OLS", "Minnesota", "SOC", "Dummy Obs."),
+                                 mn_hyper = list(a1 = 1, a2 = 0.5, a3 = 0.1),
+                                 soc_hyper = list(tau = 1),
+                                 dobs_hyper = list(tau = 1)) {
+
+  df_long <- df_long %>% arrange(date) %>% filter(train_start <= date)
+
+  # expanding end dates: from train_end0 to last-1quarter
+  end_dates <- df_long$date[df_long$date >= train_end0]
+  end_dates <- end_dates[end_dates <= (max(df_long$date) %m-% months(3))]
+
+  out <- vector("list", length(end_dates))
+
+  for (ii in seq_along(end_dates)) {
+    t_end <- end_dates[ii]
+
+    train <- df_long %>% filter(date <= t_end)
+    test_date <- t_end %m+% months(3)
+    test <- df_long %>% filter(date == test_date)
+
+    if (nrow(test) != 1) next
+    if (nrow(train) < (p + 5)) next  # safety
+
+    # --- estimate A ---
+    A_ols  <- estimate_A_ols(train, vars, p)
+
+    A_mn   <- do.call(
+      estimate_A_mn_post,
+      c(list(train_df = train, vars = vars, p = p), mn_hyper)
+    )
+
+    A_soc  <- do.call(
+      estimate_A_soc,
+      c(list(train_df = train, vars = vars, p = p), soc_hyper)
+    )
+
+    A_dobs <- do.call(
+      estimate_A_dobs,
+      c(list(train_df = train, vars = vars, p = p), dobs_hyper)
+    )
+
+    # --- 1-step point forecast ---
+    fc_ols  <- var_1step_fc(train, vars, p, A_ols)
+    fc_mn   <- var_1step_fc(train, vars, p, A_mn)
+    fc_soc  <- var_1step_fc(train, vars, p, A_soc)
+    fc_dobs <- var_1step_fc(train, vars, p, A_dobs)
+
+    y_true <- as.numeric(test[1, vars])
+
+    out[[ii]] <- tibble(
+      date   = test_date,
+      var    = vars,
+      se_ols  = (y_true - fc_ols)^2,
+      se_mn   = (y_true - fc_mn)^2,
+      se_soc  = (y_true - fc_soc)^2,
+      se_dobs = (y_true - fc_dobs)^2
+    )
+  }
+
+  df_se <- bind_rows(out)
+
+  df_msfe <- df_se %>%
+    group_by(var) %>%
+    summarize(
+      MSFE_OLS        = mean(se_ols,  na.rm = TRUE),
+      MSFE_Minnesota  = mean(se_mn,   na.rm = TRUE),
+      MSFE_SOC        = mean(se_soc,  na.rm = TRUE),
+      MSFE_DummyObs   = mean(se_dobs, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  list(model_name = model_name, se = df_se, msfe = df_msfe)
+}
+
+```
+
+```{r REG msfe different tau}
+msfe_table <- tibble()
+for (tau_loop in c(1:5)/10){
+  print(tau_loop)
+  res_msfe <- msfe_1step_expanding(df_var_long, vars, p, soc_hyper = list(tau = tau_loop), dobs_hyper = list(tau_loop))
+  msfe_table_loop <- mutate(res_msfe$msfe, tau = tau_loop)
+  msfe_table <- bind_rows(msfe_table, msfe_table_loop)
+}
+
+msfe_table %>% 
+  pivot_longer(cols = c(-var, -tau), names_to = "Model", values_to = "MSFE") %>% 
+  mutate(Model = str_remove(Model, "MSFE_")) %>% 
+  ggplot(mapping = aes(x = tau, y = MSFE, color = Model)) + 
+  geom_line()+
+  geom_point()+
+  facet_wrap(~var, scales = "free", ncol = 1)
+```
+
+```{r}
+res_msfe <- msfe_1step_expanding(df_var_long, vars, p)
+df_se <- res_msfe$se
+```
+
+```{r EXP msfe}
+res_msfe$msfe %>% 
+  gt_basic(title = "MSFE", decimals = 4)
+```
+
+```{r EXP plot se by var}
+df_se_long <- df_se %>%
+  pivot_longer(
+    cols = starts_with("se_"),
+    names_to = "method",
+    values_to = "se"
+  ) %>%
+  mutate(
+    method = recode(method,
+                    se_ols = "OLS",
+                    se_mn  = "Minnesota",
+                    se_soc = "SOC",
+                    se_dobs = "Dummy Obs."),
+    method = factor(method, levels = model_name),
+    var    = factor(var, levels = vars)
+  )
+
+ggplot(df_se_long, aes(x = date, y = se, color = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.9) +
+  facet_wrap(~ var, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = col_map_se) +
+  labs(
+    title = "1-quarter-ahead Squared Error (SE) over time",
+    x = NULL, y = "Squared error",
+    color = ""
+  ) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+## Natural Conjugate Prior
+
+単回帰の自然共役分布：Normal-Gamma
+
+SURの自然共役分布：Normal-Wishart
+
+Why?
+
+"一言でいうと（ChatGPT）"
+
+- 単回帰
+
+  $$
+  \log L \;\sim\; \frac{T}{2}\log\sigma^{2} \;+\; \frac{1}{2\sigma^{2}}\,(y-X\beta)'(y-X\beta)
+  $$
+
+- SUR
+
+  $$
+  \log L \;\sim\; \frac{T}{2}\log|\Sigma|  \;+\; \frac{1}{2}\,\mathrm{tr}\!\left(\Sigma^{-1}U'U\right)\quad\text{with } U=Y-XB,\; y=\mathrm{vec}(Y),\; \beta=\mathrm{vec}(B).
+  $$
+
+$\mathrm{tr}\!\left(\Sigma^{-1}U'U\right)$とは：
+
+$$
+U'U=\begin{pmatrix}
+\sum_{t=1}^4 u_{t1}^2 & \sum_{t=1}^4 u_{t1}u_{t2} & \sum_{t=1}^4 u_{t1}u_{t3}\\
+\sum_{t=1}^4 u_{t2}u_{t1} & \sum_{t=1}^4 u_{t2}^2 & \sum_{t=1}^4 u_{t2}u_{t3}\\
+\sum_{t=1}^4 u_{t3}u_{t1} & \sum_{t=1}^4 u_{t3}u_{t2} & \sum_{t=1}^4 u_{t3}^2
+\end{pmatrix}.
+$$
+$$
+\mathrm{tr}\!\left(\Sigma^{-1}U'U\right)=\sum_{i=1}^3\sum_{j=1}^3 \omega_{ij}\sum_{t=1}^4 u_{ti}u_{tj}=\sum_{t=1}^4 \,u_t'\Sigma^{-1}u_t,\quad u_t=\begin{pmatrix}u_{t1}\\u_{t2}\\u_{t3}\end{pmatrix}.
+$$
+
+$$
+ (\omega_{ij}=\omega_{ji}):\mathrm{tr}\!\left(\Sigma^{-1}U'U\right)=\sum_{t=1}^4\Big(\omega_{11}u_{t1}^2+\omega_{22}u_{t2}^2+\omega_{33}u_{t3}^2+2\omega_{12}u_{t1}u_{t2}+2\omega_{13}u_{t1}u_{t3}+2\omega_{23}u_{t2}u_{t3}\Big).
+$$
+
+
+```{r}
+# mu_0 <- 1
+# mu_1 <- 1
+# # mu_2 <- 1 "should be set to 1"
+# mu_3 <- 1
+# sigma <- c(1,1,1)
+# 
+# Ydum <- matrix(0, nrow = K-1, ncol = M)
+# 
+# diag(Ydum) <- mu_1 * mu_3 * sigma
+```
+
+
+各時点の残差ベクトルの二次形式を足しあげたもの。つまり、$\Sigma^{-1}$の非対角要素がある限り、交差項（e.g. $\sum_t u_{t1}u_{t2}$）が入る。
+つまり、**尤度が方程式ごとに分解できない。**（c.f. $\Sigma$が対角なら、方程式ごとのOLS尤度の積に分解可能）
+
+**Natural ConjugateでできないMinnesotaの例を考えてみる**（e.g. Killianの$\theta$、3変数以上の場合の$\sigma_i/\sigma_j$など？）
+
+
+# Koop & Korobilis (2010) と Kilian & Lütkepohl (2016) の notation の違い
+
+Bayesian VAR のベクトル化表現は、Koop and Korobilis (2010, KK) と  
+Kilian and Lütkepohl (2016, KL) で見かけ上異なる形で書かれているが、  
+**適切な並べ替えを行えば数学的に完全に同値**である。
+
+以下では、その違いと注意点を整理する。
+
+---
+
+##### ベクトル化（vec）の取り方
+
+- **KK**  
+  被説明変数行列 $Y$ に対して **列方向の vec** を取る：
+  $$
+  y = \mathrm{vec}(Y)
+  =
+  \begin{bmatrix}
+  Y_{:,1} \\
+  Y_{:,2} \\
+  \vdots \\
+  Y_{:,M}
+  \end{bmatrix}
+  $$
+  （各方程式ごとに時間方向にスタック）
+
+- **KL**  
+  ブロック回帰の観点から、
+  **時間方向を先に並べた表現**を用いる。
+
+この違いが、設計行列や誤差分散の Kronecker 積の順序の差として現れる。
+
+---
+
+##### 設計行列の違い
+
+VAR($p$) を
+$$
+Y = XA + E
+$$
+と書くとき、
+
+- **KK の表現**
+  $$
+  y  =  \underbrace{(I_M \otimes X)}_{\text{KK}}  \alpha  +  e,  \qquad  \alpha = \mathrm{vec}(A)
+  $$
+
+- **KL の表現**
+  $$
+  y  =  \underbrace{(X \otimes I_M)}_{\text{KL}}  \tilde{\alpha}  +  u
+  $$
+
+両者は、係数ベクトルの並び替え
+$$
+\tilde{\alpha} = P \alpha
+$$
+を用いれば同一の線形写像を表している。
+
+---
+
+##### 誤差分散行列の違い
+
+- **KK**
+  $$
+  e \sim N(0,\; \Sigma \otimes I_T)
+  $$
+
+- **KL**
+  $$
+  u \sim N(0,\; I_T \otimes \Sigma)
+  $$
+
+これは誤差項の分布が異なるのではなく、  
+**ベクトルの並び順の違いによる見かけの差**である。
+
+行列正規分布
+$$
+E \sim MN(0,\; I_T,\; \Sigma)
+$$
+に対して、どの順序で vec を取るかによって  
+Kronecker 積の順序が入れ替わる。
+
+---
+
+##### 本質的に同値である理由
+
+Kronecker 積と vec の基本恒等式により、
+$$
+(I_M \otimes X)\,\mathrm{vec}(A)
+\quad \text{と} \quad
+(X \otimes I_M)\,P\,\mathrm{vec}(A)
+$$
+は、適切な置換行列 $P$ の下で同一である。
+
+したがって、KK と KL の違いは
+
+> **モデルの違いではなく、表現（notation）の違い**
+
+に過ぎない。
+
+---
+
+##### 実装上の重要な注意点
+
+- 一度 **KK 流**（$I_M \otimes X$, $\Sigma \otimes I_T$）を採用したら、
+  - 係数ベクトルの並び
+  - dummy observation
+  - GLS / whitening
+  を **すべてその規約で統一**する必要がある。
+
+- KL の式をそのままコードに写すと、
+  - Kronecker 積の順序
+  - 誤差分散の扱い
+  が一致せず、誤った重み付けになる危険がある。
+
+---
+
+### まとめ
+
+- Koop and Korobilis (2010) と Kilian and Lütkepohl (2016) の VAR 表現は  
+  **完全に同値**である。
+- 違いは
+  - vec の定義
+  - 係数ベクトルの並び
+  - Kronecker 積の順序
+  に起因する **記法上の差**である。
+- 実装では、**どちらの規約を使うかを最初に決め、最後まで貫くことが必須**である。
+
+# 7変数ver
+
+```{r}
+# --- packages: 既存に加えて zoo は already, quantmod already ---
+
+# 四半期化ヘルパ：月次・日次でも四半期に落とす（デフォルトは四半期平均）
+to_qtr_zoo <- function(x, agg = c("mean", "last")) {
+  agg <- match.arg(agg)
+  z <- zoo::zoo(as.numeric(x), zoo::as.yearmon(zoo::index(x)))  # month index
+  # もし元が四半期や日次でも yearmon に落ちるので、年四半期へ集計できる
+  if (agg == "mean") return(aggregate(z, zoo::as.yearqtr, mean, na.rm = TRUE))
+  if (agg == "last") return(aggregate(z, zoo::as.yearqtr, function(v) tail(v, 1)))
+}
+
+# 7系列DL
+getSymbols(c("GDPC1","GDPDEF","FEDFUNDS","PCECC96","GPDIC1","HOANBS","COMPRNFB"), src="FRED")
+
+# 四半期系列（元が四半期でも「四半期へ強制」しておく）
+rgdp_q  <- to_qtr_zoo(GDPC1,    agg = "mean")
+def_q   <- to_qtr_zoo(GDPDEF,   agg = "mean")
+ff_q    <- to_qtr_zoo(FEDFUNDS, agg = "mean")  # 金利は四半期平均が自然
+c_q     <- to_qtr_zoo(PCECC96,  agg = "mean")
+i_q     <- to_qtr_zoo(GPDIC1,   agg = "mean")
+hours_q <- to_qtr_zoo(HOANBS,   agg = "mean")
+comp_q  <- to_qtr_zoo(COMPRNFB, agg = "mean")
+
+z_q <- na.omit(merge(rgdp_q, def_q, ff_q, c_q, i_q, hours_q, comp_q))
+colnames(z_q) <- c("RGDP","DEF","FF","RC","RI","HOURS","RCOMP")
+
+# 変換：あなたの既存方針に合わせる（log系は100*log、金利はlevel）
+df_var7 <- tibble(
+  date   = as.Date(as.yearqtr(index(z_q)), frac = 1),
+  lRGDP  = 100*log(as.numeric(z_q[,"RGDP"])),
+  lDEF   = 100*log(as.numeric(z_q[,"DEF"])),
+  FF     = as.numeric(z_q[,"FF"]),
+  lRC    = 100*log(as.numeric(z_q[,"RC"])),
+  lRI    = 100*log(as.numeric(z_q[,"RI"])),
+  lHOURS = 100*log(as.numeric(z_q[,"HOURS"])),
+  lRCOMP = 100*log(as.numeric(z_q[,"RCOMP"]))
+)
+
+# 期間（既存を踏襲）
+df_var_long <- df_var7 %>% filter(as.Date("1980-01-01") <= date, date <= as.Date("2019-12-31"))
+df_var      <- df_var7 %>% filter(as.Date("1995-01-01") <= date, date <= as.Date("2019-12-31"))
+
+vars7 <- c("lRGDP","lDEF","FF","lRC","lRI","lHOURS","lRCOMP")
+
+```
+
+```{r}
+var_1step_fc <- function(train_df, vars, p, A, add_const = TRUE) {
+  Ymat <- as.matrix(train_df[, vars, drop = FALSE])
+  T_df <- nrow(Ymat); M <- length(vars)
+
+  hist <- Ymat[T_df:(T_df - p + 1), , drop = FALSE]  # rows: t, t-1, ..., t-p+1
+  x_no_const <- as.vector(t(hist))                   # lag1(vars) -> lag2(vars) -> ...
+  x <- if (add_const) c(1, x_no_const) else x_no_const
+  drop(x %*% A)
+}
+
+msfe_1step_expanding <- function(df_long, vars, p,
+                                 train_start = as.Date("1980-01-01"),
+                                 train_end0  = as.Date("1994-12-31"),
+                                 mn_hyper   = list(a1 = 1, a2 = 0.5, a3 = 0.1),
+                                 soc_hyper  = list(tau = 1),
+                                 dobs_hyper = list(tau = 1)) {
+
+  df_long <- df_long %>% arrange(date) %>% filter(train_start <= date)
+
+  end_dates <- df_long$date[df_long$date >= train_end0]
+  end_dates <- end_dates[end_dates <= (max(df_long$date) %m-% months(3))]
+
+  out <- vector("list", length(end_dates))
+
+  for (ii in seq_along(end_dates)) {
+    t_end <- end_dates[ii]
+    train <- df_long %>% filter(date <= t_end)
+    test_date <- t_end %m+% months(3)
+    test <- df_long %>% filter(date == test_date)
+
+    if (nrow(test) != 1) next
+    if (nrow(train) < (p + 10)) next
+
+    A_ols  <- estimate_A_ols(train, vars, p)
+    A_mn   <- do.call(estimate_A_mn_post, c(list(train_df=train, vars=vars, p=p), mn_hyper))
+    A_soc  <- do.call(estimate_A_soc,     c(list(train_df=train, vars=vars, p=p), soc_hyper))
+    A_dobs <- do.call(estimate_A_dobs,    c(list(train_df=train, vars=vars, p=p), dobs_hyper))
+
+    fc_ols  <- var_1step_fc(train, vars, p, A_ols)
+    fc_mn   <- var_1step_fc(train, vars, p, A_mn)
+    fc_soc  <- var_1step_fc(train, vars, p, A_soc)
+    fc_dobs <- var_1step_fc(train, vars, p, A_dobs)
+
+    y_true <- as.numeric(test[1, vars])
+
+    out[[ii]] <- tibble(
+      date = test_date,
+      var  = vars,
+      se_ols  = (y_true - fc_ols)^2,
+      se_mn   = (y_true - fc_mn)^2,
+      se_soc  = (y_true - fc_soc)^2,
+      se_dobs = (y_true - fc_dobs)^2
+    )
+  }
+
+  df_se <- bind_rows(out)
+
+  df_msfe <- df_se %>%
+    group_by(var) %>%
+    summarize(
+      MSFE_OLS       = mean(se_ols,  na.rm = TRUE),
+      MSFE_MN        = mean(se_mn,   na.rm = TRUE),
+      MSFE_SOC       = mean(se_soc,  na.rm = TRUE),
+      MSFE_DOBS      = mean(se_dobs, na.rm = TRUE),
+      RMSE_OLS       = sqrt(MSFE_OLS),
+      RMSE_MN        = sqrt(MSFE_MN),
+      RMSE_SOC       = sqrt(MSFE_SOC),
+      RMSE_DOBS      = sqrt(MSFE_DOBS),
+      .groups="drop"
+    )
+
+  list(se = df_se, msfe = df_msfe)
+}
+
+# 実行（7変数）
+p <- 5
+res_msfe7 <- msfe_1step_expanding(df_var_long, vars = vars7, p = p, dobs_hyper = list(tau = 0.1), soc_hyper = list(tau = 0.1))
+df_rmse7 <- res_msfe7$msfe
+
+```
+
+```{r}
+df_rmse7
+res_msfe$msfe
+```
+
+https://www.r-econometrics.com/timeseries/bvar/   
+
+T: 73 samples: 76 terms (1960Q1-1978Q4) - 2 lags - 1 dlog
+p: 2 lags
+k: 3 vars (invest, income, cons)
