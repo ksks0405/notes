@@ -156,7 +156,6 @@ R_t <- ifelse(K == 0, R, C * R)
 tau <- 1
 ```
 
-
 ```{r IMP dataset}
 # Fixed shocks
 x1 <- 0
@@ -174,6 +173,7 @@ y <- h * x + e
 truth <- data.frame(t = 1:n, K = K, x = x, y = y, e = e, 
                     u = c(u, NA), Var_e = R_t, Var_u = rep(tau, n))
 ```
+
 
 ```{r EXP dataset}
 truth
