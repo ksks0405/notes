@@ -100,6 +100,7 @@ y_t &= h\,x_t + e_t, && \qquad t=1,\ldots,n,\\
 x_{t+1} &= F\,x_t + u_t,&& \qquad t=1,\ldots,n-1,
 \end{alignedat}
 $$
+
 - $\{y_t\}_{t=1}^n$：スカラー観測、
 
 - $\{x_t\}_{t=1}^n$：スカラー状態、
@@ -115,8 +116,8 @@ $$
 
 観測誤差は**二成分の混合正規（mixture normal）**とし、基準分散 $R>0$ 、 スケール $C>1$、潜在indicator$K_t\in\{0,1\}$により以下のように表す。
 $$
-e_t \mid K_t=0 \sim N(0,R),\qquad
-e_t \mid K_t=1 \sim N(0,CR), \qquad \Pr(K_t=0)=p,\qquad \Pr(K_t=1)=1-p.
+e_t \mid K_t=0 \sim N(0,R),\quad
+e_t \mid K_t=1 \sim N(0,CR), \quad \Pr(K_t=0)=p,\quad \Pr(K_t=1)=1-p.
 $$
 
 初期状態には便宜的に
@@ -158,8 +159,8 @@ tau <- 1
 ```{r IMP dataset}
 # Fixed shocks
 x1 <- 0
-u  <- c(1,  2, -1)                 # u1,u2,u3 (fixed)
-e  <- c(0.5, -0.5, 1, -1)          # e1..e4 (fixed)
+u  <- c(1, 2, -1)         # u1,u2,u3 (fixed)
+e  <- c(0.5, -0.5, 1, -1) # e1..e4 (fixed)
 
 # Build state and observation
 x <- numeric(n)
@@ -179,76 +180,44 @@ truth
 
 ### Forward filtering
 
-forward filtering では、**1期前までの観測に基づく状態の予測分布**
+forward filtering では、$x_t$**の1期前までの観測に基づく状態の予測分布**
 
-$$
-x_t \mid y^{t-1} \sim N(a_t, s_t)
-$$
-
-を定義する。ここで $y^{t-1}=(y_1,\ldots,y_{t-1})$ である。このとき、**観測の予測分布**は、
-$$
-y_t \mid y^{t-1} \sim N(b_t, v_t),
-$$
-
-$$
-b_t := E(y_t\mid y^{t-1})=h\,a_t,\qquad
-v_t := \mathrm{Var}(y_t\mid y^{t-1})=h^2 s_t + R_t
-$$
-である。
-
-データにあたはめると、$x_1$の予測分布は、
 $$ 
 \begin{aligned}
-x_1|y^0 &\sim N(a_1, s_1), \,\text{where}\\
-a_1 &= E[x_1|Y^0]\\
-s_1 &= E[(x_1-a_1)^2|Y^0]
+x_{t}|Y^{t-1} &\sim N(a_{t}, s_{t}), \,\text{where}\\
+a_{t} &= E[x_{t}|Y^0]\\
+s_{t} &= E[(x_{t}-a_{t})^2|Y^{t-1}]
 \end{aligned}
 $$
 
-$y_1$の予測分布は、$y_t = hx_t + e_t,\ (e_t \sim \text{mixture})$より、
+を定義する。ここで $Y^{t-1}=(y_1,\ldots,y_{t-1})$ である。このとき、$y_1$**の予測分布**は、$y_t = hx_t + e_t,\ (e_t \sim \text{mixture})$より、
 
 $$
-\begin{aligned}
-y_1|y^0 &\sim N(b_1, v_1), \, \text{where}\\
-b_1 &= hE[x_1|Y^0] = ha_1,\\
-v_1 &= E[(y_1-b_1)^2|Y^0] = E[\{h(x_1-a_1)\}^2|Y^0] =h^2s_1+R_1
-\end{aligned}
+y_t \mid Y^{t-1} \sim N(b_t, v_t),
 $$
+
+$$
+b_t := E(y_t\mid Y^{t-1})=h\,a_t,\quad
+v_t := \mathrm{Var}(y_t\mid Y^{t-1})=h^2 s_t + R_t
+$$
+である。
 
 実現値との回帰
 
 $$
-\boxed{\underbrace{ x_1-E[x_1|y^0] }_{x_1 \text{の予測分布からの乖離をアップデート}}=L_1\underbrace{ (y_1-E[y_1|y^0]) }_{y_1 \text{の実現値からの乖離を基に}} + \eta_1 }
+\boxed{\underbrace{ x_{t}-E[x_{t}|Y^{t-1}] }_{x_{t} \text{の予測分布からの乖離をアップデート}}=L_{t}\underbrace{ (y_{t}-E[y_{t}|Y^{t-1}]) }_{y_{t} \text{の実現値からの乖離を基に}} + \eta_{t} }
 $$
-の両辺に$(y_1-b_1)$をかけ期待値を取ると、
+の両辺に$(y_{t}-b_{t})$をかけ期待値を取ると、
 
 $$ 
 \begin{alignedat}{2}
-&E\Big[\underbrace{ (x_1-\underbrace{ E[x_1|y^0] }_{=a_1})(y_1-\underbrace{ E[y_1|y^0] }_{=b_1 = h a_1}) }_{h(x_1-a_1)(x_1-a_1+e_1)}\Big] &&= L_1E\Big[(y_1-E[y_1|y^0])^2\Big]\\
-\Rightarrow & \qquad h \,\text{var}[x_1|y^0] &&= L_1  \, \text{var}[y_1|y^0]\\
-\Rightarrow & \qquad hs_1 &&= L_1 (h^2s_1+R_1)
+&E\Big[\underbrace{ (x_{t}-\underbrace{ E[x_{t}|Y^{t-1}] }_{=a_{t}})(y_{t}-\underbrace{ E[y_{t}|Y^{t-1}] }_{=b_{t} = h a_{t}}) }_{h(x_{t}-a_{t})(x_{t}-a_{t}+e_{t})}\Big] &&= L_{t}E\Big[(y_{t}-E[y_{t}|Y^{t-1}])^2\Big]\\
+\Rightarrow & \qquad \qquad h \,\text{var}[x_{t}|Y^{t-1}] &&= L_{t}  \, \text{var}[y_{t}|Y^{t-1}]\\
+\Rightarrow & \qquad \qquad hs_{t} &&= L_{t} (h^2s_{t}+R_{t})
 \end{alignedat}
 $$
 $$
-\therefore L_1 =  \frac{hs_1}{h^2s_1+R_1}
-$$
-
-#### Forward sampling 実装 
-
-数値例に当てはめると、
-
-$$
-L_1 = \begin{cases}
-\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
-\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
-\end{cases}
-$$
-
-$$
-a_1^+ := \underbrace{ E[{x}_1|y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|y^0])}_{y_1-ha_1} = \begin{cases}
-0 + 0.470 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
-0 + 0.156 \times (0.5-0) = 0.078 \quad (\text{high volatility})
-\end{cases}
+\therefore L_t =  \frac{hs_t}{h^2s_t+R_t}
 $$
 
 以上のステップを基に、forward filtering関数`ck_forward_filter_scalar_mixture`を書く。
@@ -311,6 +280,24 @@ ck_forward_filter_scalar_mixture <- function(y, h, F, R, C, K, tau, a1, s1) {
   )
 }
 ```
+
+#### Forward sampling 実装 
+
+数値例に当てはめると、
+
+$$
+L_1 = \frac{hs_1}{h^2s_1+R_1} = \begin{cases}
+\dfrac{0.7 \times 1}{0.7^2\times 1+1} = \dfrac{0.7}{1.49} \fallingdotseq 0.470 \quad (\text{low volatility})\\[1em]
+\dfrac{0.7 \times 1}{0.7^2\times 1+4} = \dfrac{0.7}{4.49} \fallingdotseq 0.156 \quad (\text{high volatility})
+\end{cases}
+$$
+
+$$
+a_1^+ := \underbrace{ E[{x}_1|Y^0] }_{a_1}+L_1\underbrace{(y_1-E[y_1|Y^0])}_{y_1-ha_1} = \begin{cases}
+0 + 0.470 \times (0.5-0) = 0.235 \quad (\text{low volatility})\\[1em]
+0 + 0.156 \times (0.5-0) = 0.078 \quad (\text{high volatility})
+\end{cases}
+$$
 
 手計算とも一致する。
 
@@ -579,7 +566,6 @@ ck_backward_sampler_scalar <- function(fwd) {
     s_pred_next = s_pred_next
   )
 }
-
 ```
 
 ```{r}
@@ -618,8 +604,6 @@ ggplot() +
     title = "Backward smoothing: E[x_t | y^T] ± 1 SD, and 10 backward-sampling draws"
   ) +
   theme_minimal()
-
-
 ```
 
 # 注意（Gibbs 全体にするには）
@@ -631,5 +615,10 @@ Carter & Kohn の Gibbs 全体や Kim et al. のSV推計では、別途
 - さらにパラメータ $\theta$ を更新するステップ
 
 が加わります。
+
+```{r, class.source='fold-show'}
+getwd()
+```
+
 
 
