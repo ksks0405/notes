@@ -52,6 +52,30 @@ rm(pkgList)
 set.seed(1111)
 ```
 
+# 準備：マルコフ連鎖
+
+マルコフ連鎖の条件（chap. 3）
+
+$n$個の変数$\{x\}=x_1, x_2, \dots, x_n$を用いて確率$P(\{x\})$を与える
+
+$\{x\}^{(k)}$から$\{x\}^{(k+1)}$が得られる確率「遷移確率」を、$T(\{x\}^{(k)} \rightarrow \{x\}^{(k+1)})$とかく。この時、以下の4つが満たされていること。
+
+(i) マルコフ性
+
+$T(\{x\}^{(k)} \rightarrow \{x\}^{(k+1)})$が、それ以前の履歴（$\{x^{(1)}\}, \{x^{(2)}\}, \dots \{x^{(k-1)}\})$に依存しない…明らか
+
+(ii) 既約性
+
+あらゆる変数の組は、有限回のステップで移りあうことが可能→明らか
+
+(iii) 非周期性
+
+ステップ数 $n_s$ で$\{x\}$から$\{x'\}$に戻ってこれ、その最大公約数が$1$→明らか
+
+(iv) 詳細釣り合い条件
+
+$P(\{x\}) \cdot T(\{x\} \rightarrow \{x'\})=P(\{x'\}) \cdot T(\{x'\} \rightarrow \{x\})$
+
 # メトロポリス法
 
 $$
@@ -73,5 +97,68 @@ $$
 3. $e^{S(x^{(k)})-S(x')}>r$、i.e. 候補$x'$の方が現行の$x^{(k)}$より"ある程度"望ましければ、提案を受理して $x^{(k+1)}=x'$とする。さもなくば、提案を棄却して$x^{(k+1)}=x^{(k)}$とする。
 
 なぜこの連鎖が詳細釣り合い条件を満たす？
+
+$$ 
+\begin{aligned}
+T(x \rightarrow x') &= \frac{1}{2c} \times \min (1, e^{S(x)-S(x')}),\\
+T(x' \rightarrow x) &= \frac{1}{2c} \times \min (1, e^{S(x')-S(x)})
+\end{aligned}
+$$
+
+$S(x)-S(x')>0$のとき、
+$$
+\begin{aligned}
+ P(x) \cdot T(x \rightarrow x') &= \frac{e^{-S(x)}}{Z} \times \frac{1}{2c}\times 1\\
+P(x') \cdot T(x' \rightarrow x) &= \frac{e^{-S(x')}}{Z} \times \frac{1}{2c}\times e^{S(x')-S(x)} = \frac{e^{-S(x)}}{Z} \times \frac{1}{2c}\times 1
+\end{aligned}
+$$
+$S(x)-S(x')<0$のときも同様。
+
+## アルゴリズム
+
+```{r}
+Sfun <- function(x){x^2/2}
+
+print(Sfun(2))
+
+x_0 <- 0
+step <- 1
+n_smpl <- 10000
+
+x_smpl <- numeric(n_smpl+1)
+
+for (i in c(1:n_smpl)){
+  # current x
+  if(i == 1){
+    x_current <- x_0
+  } else{
+    x_current <- x_smpl[[i-1]]
+  }
+  # proposed x
+  x_prime <- x_current + runif(1, min = -step, max = step)
+  
+  # probability 
+  prob <- min(1, exp(Sfun(x_current)-Sfun(x_prime)))
+  
+  # accept or reject
+  if(prob > runif(1, min = 0, max = 1)){
+    x_smpl[[i]] <- x_prime
+  } else{
+    x_smpl[[i]] <- x_current
+  }
+}
+
+hist(x_smpl)
+
+tbl <- tibble(x_k = x_smpl) %>% 
+         mutate(x_avg = cummean(x_smpl)) 
+
+plot(tbl$x_avg)
+```
+
+
+Todo; ステップを変えた場合の挙動や自己相関
+→Gibbs、MH、HMC
+
 
 
