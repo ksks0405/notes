@@ -1,6 +1,6 @@
 ---
 title: "Notes on Blanchard-Kahn Method in R"
-date: "2025-8-5"
+date: "2025-08-05"
 output:
   html_document:
     toc: true
@@ -63,6 +63,61 @@ knitr::opts_hooks$set(label = function(options) {
 pkgList <- c("tidyverse", "gt","expm") # expm for %^%
 easypackages::libraries(pkgList)
 rm(pkgList)
+
+my_gt_default <- function(dta_, font_times = F, font_decimals = 4){
+  
+  if("gt_tbl" %in% c(class(dta_))){
+  } else{
+    dta_ <- gt(dta_)
+  }
+  
+  if(font_times){
+    dta_ <- dta_ %>% 
+      tab_options(
+        table.font.names = "Times New Roman",
+        table.font.size = "12px"
+      )
+  }
+  
+  dta_ <-  dta_%>% 
+    fmt_number(columns = where(is.double), decimals = font_decimals) %>% 
+    fmt_number(columns = where(is.integer), decimals = 0)
+  
+  my_gt_default <- dta_
+}
+
+my_dplyr_indexmatch <- function(tbl, mapping, target_col, new_col_name = "new_group") {
+  # mappingとtarget_colが同数のlistであるかチェック
+  if (!(is.list(mapping) && is.list(target_col))) {
+    stop("mappingとtarget_colはどちらもlistである必要があります。")
+  }
+  if (length(mapping) != length(target_col)) {
+    stop("mappingとtarget_colは同じ長さである必要があります。")
+  }
+  
+  n <- length(mapping)
+  
+  # new_col_nameをベクトルとして処理
+  if (length(new_col_name) == 1 && n > 1) {
+    new_col_name <- paste0(new_col_name, "_", seq_len(n))
+  }
+  
+  if (length(new_col_name) != n) {
+    stop("new_col_nameの長さは、mappingとtarget_colの長さに一致する必要があります。")
+  }
+  
+  # 各マッチングに対して列を追加
+  for (i in seq_len(n)) {
+    map_i <- mapping[[i]]
+    col_i <- target_col[[i]]
+    name_i <- new_col_name[[i]]
+    
+    tbl <- tbl %>%
+      mutate(!!sym(name_i) := map_i[as.character(.data[[col_i]])])
+  }
+  return(tbl)
+}
+
 ```
 
 ```{r SET matrix function 2, warning=F, include=F}
@@ -91,6 +146,10 @@ to_bmatrix_latex <- function(mat, round = NULL, delete01 = TRUE) {
 }
 
 my_print_matrix_latex <- function(mat_list, round = 4, delete01 = F){
+  my_lapply_name <- function(lst, fun_lst_and_nam){
+    lst_nam <- names(lst)
+    return(Map(fun_lst_and_nam, lst, lst_nam))
+  }
   codes_mats <- my_lapply_name(mat_list, function(x, y){
     paste0(y, " = ", to_bmatrix_latex(mat = x, round = round, delete01 = delete01))
   })
@@ -261,8 +320,7 @@ $$
 \end{align}
 $$
 
-In order for the system not to explode,
-and since
+In order for the system not to explode, and since
 
 $$
 \tilde{y}_t = \tilde{H}_{21} x_t + \tilde{H}_{22} y_t,
