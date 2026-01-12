@@ -12,13 +12,13 @@ output:
 
 The chapter contains some chunks that conduct document settings.
 
--   This chunk **removes all the variables** in the environment.
+- This chunk **removes all the variables** in the environment.
 
 ```{r SET housekeeping, class.source='fold-hide'}
 rm(list = ls(all = TRUE))
 ```
 
--   This chunk **sets** `knitr` **options**.
+- This chunk **sets** `knitr` **options**.
 
 ```{r SET knit options, class.source='fold-hide'}
 knitr::opts_chunk$set(
@@ -36,7 +36,7 @@ knitr::opts_hooks$set(label = function(options) {
 })
 ```
 
--   This chunk **loads the required packages** and **my functions**.
+- This chunk **loads the required packages** and **my functions**.
 
 ```{r SET packages, class.source='fold-hide'}
 pkgList <- c(
@@ -46,7 +46,7 @@ easypackages::libraries(pkgList)
 rm(pkgList)
 ```
 
--   This chunk sets **the seed**.
+- This chunk sets **the seed**.
 
 ```{r SET seeds, class.source='fold-hide'}
 set.seed(1111)
