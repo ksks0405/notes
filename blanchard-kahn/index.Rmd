@@ -1742,7 +1742,7 @@ bind_rows(
   mutate(irf_d$irf, model = "baseline"),
   mutate(irf_d2$irf, model = "high delta")
   ) %>% 
-  dplyr::(t, k, c, y, model) %>% 
+  dplyr::select(t, k, c, y, model) %>% 
   pivot_longer(cols = c(k, c, y), names_to = "Variable") %>% 
   ggplot() +
   geom_line(mapping = aes(x = t, y = value, color = Variable, linetype = model)) +
@@ -2315,7 +2315,7 @@ irf_g$irf <- irf_g$irf %>%
 irf_g$irf %>% head(5)
 
 irf_g$irf %>% 
-  dplyr::(-mpshock) %>% 
+  dplyr::select(-mpshock) %>% 
   pivot_longer(cols = -t, names_to = "Variable") %>% 
   ggplot() +
   geom_line(mapping = aes(x = t, y = value, color = Variable)) +
@@ -2417,7 +2417,7 @@ irf_g2_tech$irf <- irf_g2_tech$irf %>%
 irf_g2_tech$irf %>% head(5)
 
 irf_g2_tech$irf %>% 
-  dplyr::(-mpshock) %>% 
+  dplyr::select(-mpshock) %>% 
   pivot_longer(cols = -t, names_to = "Variable") %>% 
   ggplot() +
   geom_line(mapping = aes(x = t, y = value, color = Variable)) +
@@ -2435,7 +2435,7 @@ irf_g2_cp$irf <- irf_g2_cp$irf %>%
 irf_g2_cp$irf %>% head(5)
 
 irf_g2_cp$irf %>% 
-  dplyr::(-mpshock) %>% 
+  dplyr::select(-mpshock) %>% 
   pivot_longer(cols = -t, names_to = "Variable") %>% 
   ggplot() +
   geom_line(mapping = aes(x = t, y = value, color = Variable)) +
