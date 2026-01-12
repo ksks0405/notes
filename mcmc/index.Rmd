@@ -114,18 +114,23 @@ P(x') \cdot T(x' \rightarrow x) &= \frac{e^{-S(x')}}{Z} \times \frac{1}{2c}\time
 $$
 $S(x)-S(x')<0$のときも同様。
 
-## アルゴリズム
+## 数値例
+
+$S(x) = e^\frac{x^2}{2}$、すなわち$P(x) = \frac{e^{\frac{x^2}{2}}}{\sqrt{2\pi}}$のケースについて考える。
 
 ```{r}
 Sfun <- function(x){x^2/2}
+```
 
-print(Sfun(2))
+初期値を$x_0=0$、stepを$\Delta x \sim U(-1,1)$ としたときのアルゴリズムは以下の通り。
 
+```{r}
 x_0 <- 0
 step <- 1
 n_smpl <- 10000
 
-x_smpl <- numeric(n_smpl+1)
+x_smpl <- numeric(n_smpl)
+acc_smpl <- logical(n_smpl)
 
 for (i in c(1:n_smpl)){
   # current x
@@ -143,22 +148,131 @@ for (i in c(1:n_smpl)){
   # accept or reject
   if(prob > runif(1, min = 0, max = 1)){
     x_smpl[[i]] <- x_prime
+    acc_smpl[[i]] <- TRUE
   } else{
     x_smpl[[i]] <- x_current
+    acc_smpl[[i]] <- FALSE
   }
 }
+```
 
+```{r}
 hist(x_smpl)
+ts.plot(x_smpl)
+```
 
-tbl <- tibble(x_k = x_smpl) %>% 
-         mutate(x_avg = cummean(x_smpl)) 
+```{r}
+run_metropolis <- function(
+  n_smpl,
+  x_0 = 0,
+  fun_proposal = function() runif(1, min = -1, max = 1)
+){
+  # safety checks
+  if (!is.numeric(n_smpl) || length(n_smpl) != 1 || n_smpl < 1) {stop("n_smpl must be a positive scalar.")}
+  n_smpl <- as.integer(n_smpl)
+  if (!exists("Sfun", mode = "function", inherits = TRUE)) {stop("Sfun is not found. ")
+  }
 
-plot(tbl$x_avg)
+  # storage
+  x_smpl <- numeric(n_smpl)
+  acc <- logical(n_smpl)  # acceptance for each proposed move (length n_smpl)
+
+  # Metropolis random-walk (proposal increment = fun_proposal())
+  for (i in 1:n_smpl) {
+    # current x
+    if(i == 1){
+      x_current <- x_0  
+    }else{
+      x_current <- x_smpl[i-1]
+    }
+    
+    # proposed x
+    x_prime   <- x_current + fun_proposal()
+    
+    # probability
+    prob <- min(1, exp(Sfun(x_current) - Sfun(x_prime)))
+    
+    # accept or reject
+    if (prob > runif(1, 0, 1)) {
+      x_smpl[i] <- x_prime
+      acc[i] <- TRUE
+    } else {
+      x_smpl[i] <- x_current
+      acc[i] <- FALSE
+    }
+  }
+
+  list(
+    x = x_smpl,                      # length n_smpl
+    accept = acc,                    # length n_smpl
+    accept_rate = mean(acc)
+  )
+}
+```
+
+```{r}
+smpl_wide <- run_metropolis(n_smpl, x_0 = x_0, fun_proposal = function() runif(1, min = -10, max = 10))
+tbl <- tibble(baseline = x_smpl,
+              wide = smpl_wide$x) %>% 
+  mutate(baseline_avg = cummean(baseline),
+         wide_avg = cummean(wide)
+  ) 
+```
+
+```{r}
+# 累積受容率（cum acceptance ratio）と cummean
+df <- tibble(
+  t = 1:n_smpl,
+  baseline = x_smpl,
+  wide     = smpl_wide$x,
+  baseline_cummean = cummean(baseline),
+  wide_cummean     = cummean(wide),
+  baseline_cumacc  = cumsum(acc_smpl) / t,
+  wide_cumacc      = cumsum(smpl_wide$accept) / t
+)
 ```
 
 
+```{r}
+# 1) trace plot（同一図に重ねる）
+df %>%
+  select(t, baseline, wide) %>%
+  pivot_longer(-t, names_to = "chain", values_to = "x") %>%
+  ggplot(aes(x = t, y = x, color = chain)) +
+  geom_line() +
+  labs(title = "Trace plot", x = "t", y = "x", color = NULL)
+
+df %>%
+  filter(t<=1000) %>% 
+  select(t, baseline, wide) %>%
+  pivot_longer(-t, names_to = "chain", values_to = "x") %>%
+  ggplot(aes(x = t, y = x, color = chain)) +
+  geom_line() +
+  labs(title = "Trace plot", x = "t", y = "x", color = NULL)
+
+# 2) cummean（同一図に重ねる）
+df %>%
+  select(t, baseline_cummean, wide_cummean) %>%
+  pivot_longer(-t, names_to = "chain", values_to = "cummean") %>%
+  mutate(chain = recode(chain,
+                        baseline_cummean = "baseline",
+                        wide_cummean     = "wide")) %>%
+  ggplot(aes(x = t, y = cummean, color = chain)) +
+  geom_line() +
+  labs(title = "Cumulative mean over t", x = "t", y = "cummean", color = NULL)
+
+# 3) cumulative acceptance ratio（同一図に重ねる）
+df %>%
+  select(t, baseline_cumacc, wide_cumacc) %>%
+  pivot_longer(-t, names_to = "chain", values_to = "cumacc") %>%
+  mutate(chain = recode(chain,
+                        baseline_cumacc = "baseline",
+                        wide_cumacc     = "wide")) %>%
+  ggplot(aes(x = t, y = cumacc, color = chain)) +
+  geom_line() +
+  labs(title = "Cumulative acceptance ratio", x = "t", y = "cum acceptance", color = NULL)
+
+```
+
 Todo; ステップを変えた場合の挙動や自己相関
 →Gibbs、MH、HMC
-
-
-
