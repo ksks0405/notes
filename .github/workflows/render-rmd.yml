@@ -28,6 +28,7 @@ jobs:
             rmarkdown
             knitr
             tidyverse
+            gt
             matrixcalc
             vars
             zoo
@@ -40,6 +41,9 @@ jobs:
             gridExtra
             plm
             pgmm
+            QZ
+            geigen
+            MASS
 
       # --- Python セットアップ ---
       - name: Set up Python

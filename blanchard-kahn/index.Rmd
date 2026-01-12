@@ -60,7 +60,7 @@ knitr::opts_hooks$set(label = function(options) {
 -   This chunk **loads the required packages** and **my functions**.
 
 ```{r SET libraries, warning=F, include=F}
-pkgList <- c("tidyverse", "gt","expm") # expm for %^%
+pkgList <- c("tidyverse", "gt","expm", "QZ", "geigen", "MASS") # expm for %^%
 easypackages::libraries(pkgList)
 rm(pkgList)
 
