@@ -907,6 +907,3 @@ ggplot(df_band_x, aes(x = t)) +
     subtitle = "Solid = posterior median, ribbon = 10–90%, dashed = true state"
   )
 ```
-
-
-

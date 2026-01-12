@@ -13,3 +13,5 @@ output: html_document
 
 - [Carter Kohn](./carter-kohn/)
 
+- [Blanchard Kahn](./blanchard-kahn/)
+
