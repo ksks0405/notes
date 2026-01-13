@@ -27,23 +27,23 @@ jobs:
           packages: |
             rmarkdown
             knitr
-            tidyverse
-            gt
-            matrixcalc
-            vars
-            zoo
-            modelsummary
-            quantmod
             easypackages
             conflicted
-            bvartools
-            MASS
+            tidyverse
             gridExtra
+            gt
+            modelsummary
+            purrr
+            MASS
+            geigen
+            QZ
+            matrixcalc
+            zoo
+            vars
+            bvartools
             plm
             pgmm
-            QZ
-            geigen
-            MASS
+            quantmod
 
       # --- Python セットアップ ---
       - name: Set up Python
