@@ -1,0 +1,19 @@
+---
+title: Notes
+output: html_document
+---
+
+- [BVAR](./bayesian-var/)
+
+- [BEM Ch.10](./bem-chap10/)
+
+- [BEM Ch.18](./bem-chap18/)
+
+- [Dynamic panel](./dynamic-panel/)
+
+- [Carter Kohn](./carter-kohn/)
+
+- [Blanchard Kahn](./blanchard-kahn/)
+
+- [MCMC](./mcmc/)
+

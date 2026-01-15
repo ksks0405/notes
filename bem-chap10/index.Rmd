@@ -1,0 +1,944 @@
+---
+title: "BEM Chap. 10 Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: show
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- The chunks in this code are classified as follows: -->
+
+<!-- -   SET: Load package, set default options, define functions and variables, etc. -->
+
+<!-- -   IMP: Import data. -->
+
+<!-- -   PRE: Process data, including creating and editing variables, -->
+
+<!-- -   FLT: Process data that involve FILTERING. -->
+
+<!-- -   EDA: Exploratory Data Analysis -->
+
+<!-- -   REG: Regressions -->
+
+<!-- -   EXP: Export results -->
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+-   This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+-   This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title = TRUE,
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = FALSE,
+  warning = FALSE,
+  class.source = 'fold-hide'
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+-   This chunk **loads the required packages** and **my functions**.
+
+```{r SET packages, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse", #must-have
+  "ggplot2",
+  "MASS"
+)
+easypackages::libraries(pkgList)
+rm(pkgList)
+```
+
+-   This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+# セットアップ
+
+下記の3つが揃うことで、**尤度**を計算可能。
+
+- データ：$X$, $y$
+
+- パラメータ：$\beta$, $\sigma^2 (\text{or }h)$
+
+- モデル：データとパラメータの関係
+
+未知のパラメータは、標準的なOLSに対応している。
+
+モデル：
+
+$$
+\begin{aligned}
+y_t &= \beta_0 + \beta_1 x_t + \epsilon_t,\\[1em]
+&\quad \text{or}\\[1em]
+y &= X \begin{bmatrix}\beta_0 \\ \beta_1 \end{bmatrix} + \epsilon,\\[1em]
+&\epsilon \sim N(0, \sigma^2I_N)
+\end{aligned}
+$$
+
+データ：
+$$
+y, X
+$$
+
+パラメータ：
+$$
+\beta, \sigma^2
+$$
+
+# 尤度関数
+
+$\epsilon \sim N(0, \sigma^2I_N)$より、データ$\{y,X\}$が与えられれば、パラメータ$\{\beta, \sigma\}$のjoint distribution、または**尤度**が計算可能。すなわち、
+$$
+\begin{aligned}
+p(y|\beta, \sigma^2) &= \prod_{n=1}^N \left[ \frac{1}{\sqrt{2\pi }\sigma} \exp \left( -\frac{1}{2\sigma^2}\epsilon_n^2 \right) \right]\\
+&= \prod_{n=1}^N \left[ \frac{1}{\sqrt{2\pi }\sigma} \exp \left( -\frac{1}{2\sigma^2}(y_n-X_n \beta)^2 \right) \right]\\
+&= \left( \frac{1}{\sqrt{2\pi }\sigma} \right)^N \exp \left[-\frac{1}{2\sigma^2}\sum_{n=1}^{N} (y_n-X_n \beta)^2 \right] \\
+&= \left( \frac{1}{2\pi\sigma^2} \right)^{N/2} \exp \left[ -\frac{1}{2\sigma^2}(y-X\beta)'(y-X\beta) \right].
+\end{aligned} 
+$$
+または、$h$を使って
+$$
+p(y|\beta, h)= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}(y-X\beta)'(y-X\beta) \right] \quad \text{(Koop 3.3)}. 
+$$
+
+ここで、OLS推定量を
+$$
+\begin{alignat}{2}
+\hat{\beta}&=(X'X)^{-1}X'y\\
+SSE &= (y - X\hat{\beta})'(y - X\hat{\beta})\\
+\hat{\nu} &= N-k && \quad \text{(Koop 3.4)}\\
+\hat{s}^2 &= \frac{SSE}{\nu}
+\end{alignat}
+$$
+とすると、
+$$
+(y-X\beta)'(y-X\beta)=SSE+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})=\hat{\nu}\hat{s}^2+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})
+$$
+より、
+$$
+\boxed{\begin{alignedat}{2}
+p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \underbrace{ \hat{\nu}\hat{s}^2 }_{=SSE}+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] &&\quad \text{(BEM 10.4)}, \\
+\text{or}\\
+p(y|\beta, h)&= \left( \frac{1}{2\pi} \right)^{N/2} \underbrace{ \left\{h^\frac{k}{2} \exp \left[ -\frac{h}{2}(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right]\right\} }_{\text{(Normalっぽい)}} \underbrace{ \left\{h^\frac{\nu}{2} \exp \left[ -\frac{h\nu}{2\hat{s}^{-2}} \right]\right\} }_{\text{(Gammaっぽい)}} &&\quad \text{(Koop 3.7)}
+\end{alignedat}}
+$$
+
+# 事前分布
+
+次に、パラメータ$\{\beta, h\}$について**prior**（事前分布）を当てはめる。ここでは、自然共役分布として、Normal-Gamma分布を考える。Normal-Gamma分布とは、…(def)。ここでは、以下の**Hyperparameter**を考える。
+
+## Gamma分布
+
+一般に、Gamma分布の密度関数は、パラメータ$\alpha$、$\beta$を用いて
+$$
+\begin{aligned}
+& p(h; \alpha, \beta) ={C_G}^{-1}  h^{\alpha - 1} \cdot e^\frac{-h}{\beta},\\
+&\, \text{where }{C_G} = \beta^\alpha\Gamma(\alpha)
+\end{aligned}
+$$
+と表現される。
+
+以下では、精度$h$が、$\underline{s}$（スケール）と$\underline{\nu}$（自由度）によって規定されるGamma分布に従うと考える。すなわち、通常のGamma分布との対応関係を、
+$$ 
+\alpha = {\underline{\nu}}/{2}, \, \beta = {2\underline{s}^{-2}}/{\underline{\nu}}
+$$
+とする。この時、上の対応関係から、
+$$
+p(h; \underline{s}, \underline{\nu}) ={C_\gamma}^{-1} h^{\underline{\nu}-2/2} \cdot \exp\left[-\frac{1}{2} h \frac{\underline{\nu}}{\underline{s}^{-2}}\right]
+$$
+$$ \begin{aligned}
+\mathbb{E}[h] &= \alpha \beta = \frac{\underline{\nu}}{2}\frac{2\underline{s}^{-2}}{\underline{\nu}} = \underline{s}^{-2}\\
+\text{Var}[h] &= \alpha \beta^2 = \frac{\underline{\nu}}{2}\left(\frac{2\underline{s}^{-2}}{\nu}\right)^2 = \frac{2\underline{s}^{-4}}{\underline{\nu}}
+\end{aligned}$$
+つまり、$\underline{s}$は精度$h$の期待値を調整、$\underline{\nu}$は分散を調整するパラメータである。
+
+## 正規分布
+
+$β$が$N(\overline{\mathbf{\beta}}, h^{-1}\overline{\mathbf{Q}})$に従う
+$$ \begin{aligned}
+p(\beta|h; \underline{\beta}, \underline{Q}) &= \frac{1}{2\pi^{\frac{1}{2}k}}|h^{-1}\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{1}{2}(\beta-\underline{\beta})'[h^{-1}\underline{Q}]^{-1}(\beta-\underline{\beta}) \right]\\
+&= \frac{1}{2\pi^{\frac{1}{2}k}}\underbrace{ (h^{-k}|\underline{Q}|) }_{\text{行列式の性質}}^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\\
+&= \left( \frac{h}{2\pi} \right)^{\frac{1}{2}k} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]
+\end{aligned} $$
+
+# 事後分布
+
+モデルの**尤度**と**事前分布**が与えられることで、ベイズの定理に基づき**事後分布**を計算することができる。
+
+$$ \boxed{\begin{alignedat}{3}
+p(y|\beta, h)&= \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \nu \hat{s}^2 +(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] && \quad \dots \text{尤度}\\
+p(h; \underline{s}, \underline{\nu}) &={C_\gamma}^{-1} h^{\underline{\nu}-2/2} \cdot \exp\left[-\frac{1}{2} h \frac{\underline{\nu}}{\underline{s}^{-2}}\right]  && \quad \dots \text{事前分布（Gamma部分）}\\
+p(\beta|h,\underline{\beta}, \underline{Q}) &=\left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]  && \quad \dots \text{事前分布（正規分布部分）}
+\end{alignedat}} $$
+
+## 結合分布
+
+ベイズの定理より、
+$$ \begin{aligned}
+p(\beta, h |y) &\propto \underbrace{p(\beta, h; \underline{\beta},\underline{Q}, \underline{s}, \underline{\nu})}_{\text{ HPで規定されるparameterの事前分布}} \times \underbrace{ p(y|\beta, h) }_\text{parameterで条件づけられた尤度}\\
+&= \quad p(\beta | h; \underline{\beta},\underline{Q})p(h; \underline{s}, \underline{\nu}) \quad \times \quad p(y|\beta, h)\\[1em]
+\Rightarrow \,p(\beta, h |y) &\propto \left( \frac{h}{2\pi} \right)^{k/2} |\underline{Q}|^{-\frac{1}{2}}\exp\left[ -\frac{h}{2}(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta}) \right]\quad\dots\text{事前分布（正規）}\\
+&\quad \quad \times {C_\gamma}^{-1} h^{(\underline{\nu}-2)/2} \cdot \exp\left[-\frac{h}{2} \frac{\underline{\nu}}{\underline{s}^{-2}}\right] \quad\dots\text{事前分布（Gamma）}\\
+&\quad \quad \times \left( \frac{h}{2\pi} \right)^{N/2} \exp \left[ -\frac{h}{2}\left\{ \hat{\nu} \hat{s}^2 +(\beta-\hat{\beta})'X'X(\beta-\hat{\beta}) \right\} \right] \quad\dots\text{尤度}\\
+& \propto h^{\frac{k+\underline{\nu}-2+N}{2}} \exp \left[ -\frac{h}{2} \left\{\underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\right\} \right].
+\end{aligned} $$
+ここで、$(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$の部分は、
+
+- $(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})$: $\beta$のprior$\underline\beta$からの距離
+- $(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})$:$\beta$最尤推定値$\hat\beta$からの距離
+
+と解釈できる。また、後述の書き換え
+$$
+\begin{aligned}
+ &(\beta-\underline{\beta})'\underline{Q}^{-1}(\beta-\underline{\beta})+(\beta-\hat{\beta})'X'X(\beta-\hat{\beta})\\
+ =& (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})
++\underbrace{ (\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta}) +(\hat{\beta}-\bar{\beta})'X'X(\hat{\beta}-\bar{\beta}) }_{\beta\text{に依存しない！（$h$には依存）}}\\
+=& (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})
++(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta})
+\end{aligned}
+$$
+を用いると、
+$$
+\boxed{\begin{aligned}
+p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
+-\frac{h}{2}\Big\{ &\underline{\nu}\underline{s}^{2}+ \hat{\nu}\hat{s}^2 +(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})\\ &
++(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta})
+\Big\} \Bigg],\\
+\text{or}\\
+p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
+-\frac{h}{2}\Big\{ &(\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})+\bar{\nu} \bar{s}^2
+\Big\} \Bigg].
+\end{aligned}}
+$$
+$$
+\boxed{\therefore \beta, h | y \sim NG(\bar{\beta}, \bar{Q}, \bar{s}^{-2}, \bar{\nu})}
+$$
+$$
+\begin{alignedat}{2}
+\bar{Q} &= (\underline{Q}^{-1}+X'X)^{-1},&&\quad \text{(Koop 3.10)}\\
+\bar{\beta} &= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}), &&\quad \text{(Koop 3.11)}\\
+\bar{\nu} &= \underline{\nu}+N, &&\quad \text{(Koop 3.12)}\\
+\bar{\nu}\bar{s}^2 &= \underline{\nu}\underline{s}^2+\hat{\nu}\hat{s}^2+(\underline{\beta}-\hat{\beta})'[{\underline{Q}+(X'X)^{-1}}]^{-1}(\underline{\beta}-\hat{\beta}), &&\quad \text{(Koop 3.13)}\\
+\end{alignedat}
+$$
+
+## $\beta$の条件つき事後分布
+
+$p(\beta,h|y)$に注目すると、$h$を定数項として考えた場合、$\beta$に依存するのは$\exp \{\,\}$内の第1項のみである。すなわち、
+$$
+p(\beta, h|y)\propto \exp \left[-\frac{1}{2}(\beta-\bar{\beta})'[h^{-1}\bar{Q}]^{-1}(\beta-\bar{\beta})\right].
+$$
+これは、正規分布のカーネル。従って、
+$$
+\boxed{
+    \begin{aligned}\beta|h,y \sim N(\bar{\beta},h^{-1}\bar{Q}),\end{aligned}\\[1em]
+    \left.\begin{aligned}\bar{Q} &= (\underline{Q}^{-1}+X'X)^{-1},\\
+    \bar{\beta} &= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta})
+    \end{aligned}\right\}
+\quad (\text{再掲})}
+$$
+
+**Interpretation**:
+- OLS推定量との対応関係は、$\bar{\beta} ⇔\underline{\beta}$、$(X'X)^{-1} ⇔\underline{Q}$.
+
+$$
+\text{OLS:} \quad \text{Var}[b|X] = \sigma^2(X'X)^{-1} \tag{Greene 4-15}
+$$
+
+- $\bar{\beta}$は、prior$\underline{\beta}$と最尤推定値$\hat{\beta}$の加重平均で決まる。ウエイトは、$\underline{Q}$（priorのばらつきの**逆数**;ばらついていると小さい）と$X'X$（データの情報量；大きいと大きい）。
+
+## $h$の事後分布
+
+$h$の事後分布は、以下の通り、結合分布の$\beta$を周辺化することで与えられる。
+$$
+p(h|y) = \int p(\beta,h|y) d\beta
+$$
+ここで再び$p(\beta,h|y)$に注目すると、$\beta$に依存するのは$\exp$内の第1項のみである。従って、
+$$
+\begin{aligned}
+p(h|y) &\propto \int p(\beta,h|y) d\beta\\
+&=  h^{\frac{k+\underline{\nu}-2+N}{2}} \exp\left[-\frac{h}{2}\bar{\nu}\bar{s}^2\right] \int \exp \left[  -\frac{1}{2} (\beta-\bar{\beta})'h\bar{Q}^{-1}(\beta-\bar{\beta})\right]d\beta.
+\end{aligned}
+$$
+
+Integral内は正規分布の密度関数を含むことから、
+$$
+\int \exp \left[-\frac{1}{2} (\beta-\bar{\beta})'h\bar{Q}^{-1}(\beta-\bar{\beta})\right] d\beta=(2\pi)^{k/2}|h\bar{Q}^{-1}|^{-1/2}=(2\pi)^{k/2}h^{-k/2}|\bar{Q}^{-1}|^{-1/2}
+$$
+と解ける。従って、
+$$
+\begin{aligned}
+p(h\mid y) &\propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\left[-\frac{h}{2}\bar{\nu}\bar{s}^2\right] (2\pi)^{k/2}h^{-k/2}|\bar{Q}^{-1}|^{-1/2}\\
+&= h^{\frac{\bar{\nu}-2}{2}}\exp\left[-\frac{h}{2}\bar{\nu}\bar{s}^2\right] (2\pi)^{k/2}|\bar{Q}|^{1/2}\\
+&\propto h^{\frac{\bar{\nu}-2}{2}}\exp\left[-\frac{h}{2}\bar{\nu}\bar{s}^2\right]
+\end{aligned}
+$$
+
+$$
+\beta, h|y \sim NG(\bar{\beta}, \bar{Q}, \bar{s},\bar{\nu}),
+$$
+
+```{r SET analytical posterior function, class.source='fold-hide'}
+calculate_bayesian_analytical_solution <- function(y, X, beta_prior, Q_prior, nu_prior, s2_prior) {
+  n <- nrow(X)  # Number of observations
+  XTX <- t(X) %*% X
+  XTy <- t(X) %*% y
+  Q_posterior <- XTX + Q_prior
+  beta_posterior <- solve(Q_posterior, XTy + Q_prior %*% beta_prior)
+  nu_posterior <- nu_prior + n
+
+  term1 <- nu_prior * s2_prior
+  term2 <- t(y) %*% y
+  term3 <- t(beta_prior) %*% Q_prior %*% beta_prior
+  term4 <- t(beta_posterior) %*% Q_posterior %*% beta_posterior
+
+  nu_s2_posterior_sum <- term1 + term2 + term3 - term4
+  s2_posterior <- as.numeric(nu_s2_posterior_sum[1, 1] / nu_posterior)
+
+  list(
+    beta_posterior = beta_posterior,
+    Q_posterior    = Q_posterior,
+    nu_posterior   = nu_posterior,
+    s2_posterior   = s2_posterior
+  )
+}
+```
+
+# 数値例
+
+データ：
+$$
+\mathbf{x} = \begin{pmatrix} -2 \\ -1 \\ 0 \\ 1 \\ 2 \end{pmatrix},
+\quad
+\mathbf{y} = \begin{pmatrix} -3.0 \\ -1.5 \\ 1.5 \\ 2.5 \\ 5.5 \end{pmatrix}
+$$
+
+デザイン行列：
+$$
+\mathbf{X} = \begin{pmatrix}
+1 & -2 \\
+1 & -1 \\
+1 & 0 \\
+1 & 1 \\
+1 & 2
+\end{pmatrix}
+$$
+
+このデータでは、$\hat{\beta}=2.1$、すなわち真の値（$\beta = 2.0$）よりわずかに**大きくなる**。
+
+```{r IMP toy data, class.source='fold-hide'}
+### データ生成
+x_val <- c(-2, -1, 0, 1, 2)
+y_val <- c(-3.0, -1.5, 1.5, 2.5, 5.5)
+n <- length(x_val) # サンプルサイズ T=5
+X <- cbind(1, x_val)
+y <- matrix(y_val, ncol = 1)
+beta_true <- matrix(c(1.0, 2.0), ncol = 1)
+k <- ncol(X) # パラメータ数 k=2 (beta0, beta1)
+```
+
+```{r EDA plot data, class.source='fold-hide'}
+### プロット
+x_model <- seq(min(x_val) - 1, max(x_val) + 1, length.out = 100)
+y_true_model <- 1 + 2 * x_model
+
+plot(x_val, y_val, pch = 16, xlab = "x", ylab = "y",
+     main = "Observed Data and True Model")
+lines(x_model, y_true_model, lty = 2)
+grid()
+legend("topleft",
+       legend = c("Observed Data", "True Model: y = 1 + 2x"),
+       pch = c(16, NA), lty = c(NA, 2), bty = "n")
+```
+
+## OLS推定量の計算
+
+$$
+\begin{alignat}{2}
+\hat{\beta}&=(X'X)^{-1}X'y\\
+SSE &= (y - X\hat{\beta})'(y - X\hat{\beta})\\
+\nu &= N-k && \quad \text{(Koop 3.4)}\\
+s &= \frac{SSE}{\nu}
+\end{alignat}
+$$
+
+```{r REG OLS, class.source='fold-hide'}
+XTX <- t(X) %*% X
+XTy <- t(X) %*% y
+beta_hat <- solve(XTX, XTy)
+SSE <- sum((y - X %*% beta_hat)^2)
+s2_ols <- SSE / (n - k)
+cat("OLS betahat:\n"); print(beta_hat)
+```
+
+## 尤度関数 数値例
+
+```{r SET likelihood function, class.source='fold-hide'}
+### 尤度関数
+calculate_likelihood <- function(beta, h, y, X) {
+  N <- length(y)
+  constant_part <- (h / (2 * pi))^(N / 2) # (h/2pi)^(N/2)
+  residual <- y - X %*% beta
+  sse <- t(residual) %*% residual
+  exponential_part <- exp(- h/2 * sse)
+  as.numeric(constant_part * exponential_part)
+}
+```
+
+異なる$\beta_1$と$h$について尤度関数をplotすると、
+- $\beta_1$が真の値（$2$）に近いほど尤度が大きく、
+- その山は、精度が高い（=分散が低い）ほど高い
+
+ことがわかる。
+
+```{r EDA likelihood plot, class.source='fold-hide'}
+
+### 尤度関数プロット
+beta1_range <- seq(-0.5, 2.5, length.out = 11)
+
+h_values <- c(1.0, 2.0, 3.0)
+cols <- c("blue", "green", "red")
+labs <- paste0("h = ", h_values)
+
+# plot(NA, xlim = range(beta1_range), ylim = c(0, NA),
+#      xlab = expression(beta[1]),
+#      ylab = expression(L(beta[1]~"|"~beta[0]==1,~h)),
+#      main = expression("Likelihood function  " * L(beta[1]~"|"~beta[0]==1,~h)))
+
+# for (i in seq_along(h_values)) {
+#   h_val <- h_values[i]
+#   kernel_values <- numeric(length(beta1_range))
+#   for (j in seq_along(beta1_range)) {
+#     beta1_val <- beta1_range[j]
+#     beta_vector <- matrix(c(beta_true[1,1], beta1_val), ncol = 1)
+#     kernel_values[j] <- calculate_likelihood(beta_vector, h_val, y, X)
+#   }
+#   lines(beta1_range, kernel_values, type = "b", col = cols[i])
+# }
+# 
+# grid()
+# legend("topright", legend = labs, col = cols, lty = 1, pch = 1, bty = "n")
+```
+
+## Gamma分布 数値例
+
+$$
+\begin{aligned}
+\underline{\beta} &= \begin{pmatrix}0.0\\0.0\end{pmatrix},\\
+\underline{Q} &= \begin{bmatrix}1 & 0\\ 0 & 1\end{bmatrix},\\
+\underline{\nu} &= \quad 2.0,\\
+\underline{s}^2 &= \quad 0.5.
+\end{aligned}
+$$
+
+```{r SET prior parameters, class.source='fold-hide'}
+
+# 3. 事前分布パラメータ (Informative Prior: Normal-Gamma)
+beta_prior <- matrix(c(0.0, 0.0), ncol = 1) # 事前平均: beta = [0, 0]'
+Q_prior <- diag(k) * 1.0                   # 事前精度行列 Q (確信度): Q = diag(1, 1)
+nu_prior <- 2.0                            # 事前自由度/スケール
+s2_prior <- 0.5                            # 事前分散の目安 E[sigma^2] = 0.5 -> E[h] = 2
+```
+
+```{r SET h prior kernel, class.source='fold-hide'}
+
+calculate_h_prior_kernel <- function(h_param, nu, s2) {
+  alpha <- nu / 2.0
+  beta  <- (nu * s2) / 2.0
+  if (h_param <= 0) return(0.0)
+  (h_param^(alpha - 1)) * exp(-beta * h_param)
+}
+```
+
+```{r EDA prior kernel for h, class.source='fold-hide'}
+
+h_range <- seq(0.1, 10.0, length.out = 50)
+
+# 計算結果を保存するリスト
+kernel_values_h <- numeric(length(h_range))
+
+for (i in seq_along(h_range)) {
+  h_point <- h_range[i]
+  kernel_values_h[i] <- calculate_h_prior_kernel(h_point, nu_prior, s2_prior)
+}
+
+# 結果をプロット
+plot(h_range, kernel_values_h, type = "l",
+     xlab = "h (Precision)", ylab = "Kernel Value",
+     main = "Prior Kernel for Precision h (nu_prior, s2_prior)")
+grid()
+```
+
+## 正規分布 数値例
+
+```{r SET beta conditional kernel, class.source='fold-hide'}
+
+calculate_conditional_posterior_beta_kernel <- function(beta, beta_bar, h, Q_bar) {
+  k <- length(beta)
+  deviation <- beta - beta_bar
+  quadratic_form <- t(deviation) %*% Q_bar %*% deviation
+  as.numeric((h^(k/2)) * exp(-0.5 * h * quadratic_form[1,1]))
+}
+```
+
+prior($\beta, Q$)を固定したうえで、異なる$h$に条件づけて、$\beta$の条件付き尤度を計算。$h$ （precision）が大きいほど、prior（$\beta = 0$）から近い（離れた）値に大きい（小さい）尤度を割り当てる一方、precisionが小さい場合はflat。
+
+```{r EDA prior kernel for beta1, class.source='fold-hide'}
+# 
+# beta1_range <- seq(-0.5, 2.5, length.out = 11)
+# beta0_fixed <- 1.0
+# 
+# h_values <- c(1.0, 2.0, 3.0)
+# cols <- c("blue", "green", "red")
+# labs <- paste0("h = ", h_values)
+# 
+# plot(NA, xlim = range(beta1_range), ylim = c(0, NA),
+#      xlab = expression(beta[1]), ylab = "Kernel Value",
+#      main = expression("Posterior Kernel for " * beta[1] * " (" * beta[0]==1.0 * ", Prior)"))
+# 
+# for (i in seq_along(h_values)) {
+#   h_val <- h_values[i]
+#   kernel_values <- numeric(length(beta1_range))
+#   for (j in seq_along(beta1_range)) {
+#     beta1_val <- beta1_range[j]
+#     beta_vector <- matrix(c(beta0_fixed, beta1_val), ncol = 1)
+#     kernel_values[j] <- calculate_conditional_posterior_beta_kernel(beta_vector, beta_prior, h_val, Q_prior)
+#   }
+#   lines(beta1_range, kernel_values, type = "b", col = cols[i])
+# }
+# 
+# grid()
+# legend("topright", legend = labs, col = cols, lty = 1, pch = 1, bty = "n")
+```
+
+- hにconditionづければ、betaのposteriorも正規分布…"自然共役"
+
+## 解析解
+
+```{r REG analytical posterior, class.source='fold-hide'}
+
+# Call the function with existing data and prior parameters
+post <- calculate_bayesian_analytical_solution(y, X, beta_prior, Q_prior, nu_prior, s2_prior)
+
+beta_post_analytical <- post$beta_posterior
+Q_post_analytical    <- post$Q_posterior
+nu_post_analytical   <- post$nu_posterior
+s2_post_analytical   <- post$s2_posterior
+
+cat("Analytical Posterior Mean for Beta:\n"); print(beta_post_analytical)
+cat("\nAnalytical Posterior Precision Matrix for Beta (Q_posterior):\n"); print(Q_post_analytical)
+cat("\nAnalytical Posterior Degrees of Freedom (nu_posterior):", nu_post_analytical, "\n")
+cat("\nAnalytical Posterior Scale for Sigma^2 (s2_posterior):", s2_post_analytical, "\n")
+```
+
+```{r EDA marginal posterior beta1, class.source='fold-hide'}
+# 
+# # Parameters for the marginal posterior t-distribution of beta_1
+# df_beta1 <- nu_post_analytical
+# loc_beta1 <- beta_post_analytical[2,1]  # beta_1 is the 2nd element
+# 
+# # Calculate the inverse of Q_post_analytical
+# inv_Q_post_analytical <- solve(Q_post_analytical)
+# 
+# # NOTE:
+# # In the original ipynb cell, the line after `if nu_post_analytical > 2:` was abbreviated as `...`.
+# # Here we fill it using the standard conjugate Normal-Gamma result:
+# # marginal beta_j | y ~ t_{nu_post}(mean = beta_post[j], scale = sqrt(s2_post * (Q_post^{-1})[j,j])).
+# 
+# if (nu_post_analytical > 2) {
+#   scale_beta1_std <- sqrt(s2_post_analytical * inv_Q_post_analytical[2,2])
+# } else {
+#   scale_beta1_std <- NA_real_
+# }
+# 
+# beta1_range <- seq(-0.5, 3.5, length.out = 200)
+# 
+# # R's dt() has no (loc, scale), so we apply the location-scale transform explicitly:
+# posterior_pdf_values <- dt((beta1_range - loc_beta1)/scale_beta1_std, df = df_beta1) / scale_beta1_std
+# 
+# plot(beta1_range, posterior_pdf_values, type = "l",
+#      xlab = expression(eta[1]), ylab = "Density",
+#      main = expression("Marginal Posterior PDF for " * eta[1]))
+# abline(v = beta_true[2,1], lty = 2, col = "red")
+# abline(v = beta_hat[2,1],  lty = 3, col = "green")
+# abline(v = loc_beta1,      lty = 4, col = "blue")
+# grid()
+# legend("topright",
+#        legend = c(
+#          sprintf("True eta_1 (%.1f)", beta_true[2,1]),
+#          sprintf("OLS betahat_1 (%.1f)", beta_hat[2,1]),
+#          sprintf("Posterior Mean beta_1 (%.2f)", loc_beta1)
+#        ),
+#        lty = c(2,3,4), col = c("red","green","blue"), bty = "n")
+```
+
+## シミュレーション
+
+```{r PRE grid setup, class.source='fold-hide'}
+
+beta1_grid <- seq(-1, 3, length.out = 100)
+h_grid <- seq(0.1, 10, length.out = 100)
+grid_df <- expand.grid(beta1 = beta1_grid, h = h_grid)
+
+cat("beta1_grid length:", length(beta1_grid), "\n")
+cat("h_grid length:", length(h_grid), "\n")
+cat("grid_df rows:", nrow(grid_df), "\n")
+```
+
+```{r PRE likelihood grid, class.source='fold-hide'}
+
+# Likelihood on the (beta1, h) grid
+grid_df$likelihood <- 0.0
+
+for (r in seq_len(nrow(grid_df))) {
+  beta1_val <- grid_df$beta1[r]
+  h_val <- grid_df$h[r]
+  beta_vector <- matrix(c(beta_true[1,1], beta1_val), ncol = 1)
+  if (h_val > 0) {
+    grid_df$likelihood[r] <- calculate_likelihood(beta_vector, h_val, y, X)
+  } else {
+    grid_df$likelihood[r] <- 0
+  }
+}
+
+cat("Likelihood values calculated.\n")
+```
+
+```{r EDA likelihood heatmap, class.source='fold-hide'}
+
+# Heatmap: likelihood
+ggplot(grid_df, aes(x = beta1, y = h, fill = likelihood)) +
+  geom_raster() +
+  labs(
+    title = "Likelihood Function Heatmap",
+    x = expression(beta[1]),
+    y = "h (Precision)"
+  ) +
+  theme_minimal()
+```
+
+```{r PRE prior grid, class.source='fold-hide'}
+
+# Prior on the (beta1, h) grid
+grid_df$prior <- 0.0
+
+for (r in seq_len(nrow(grid_df))) {
+  beta1_val <- grid_df$beta1[r]
+  h_val <- grid_df$h[r]
+
+  beta_vector <- matrix(c(beta_prior[1,1], beta1_val), ncol = 1)
+
+  if (h_val > 0) {
+    h_prior_kernel <- calculate_h_prior_kernel(h_val, nu_prior, s2_prior)
+    beta_conditional_prior_kernel <- calculate_conditional_posterior_beta_kernel(
+      beta_vector, beta_prior, h_val, Q_prior
+    )
+    grid_df$prior[r] <- h_prior_kernel * beta_conditional_prior_kernel
+  } else {
+    grid_df$prior[r] <- 0
+  }
+}
+
+cat("Prior values calculated.\n")
+```
+
+```{r EDA prior heatmap, class.source='fold-hide'}
+
+ggplot(grid_df, aes(x = beta1, y = h, fill = prior)) +
+  geom_raster() +
+  labs(
+    title = "Prior Distribution Heatmap",
+    x = expression(beta[1]),
+    y = "h (Precision)"
+  ) +
+  theme_minimal()
+```
+
+```{r PRE posterior grid, class.source='fold-hide'}
+
+# Posterior (normalized on the grid)
+posterior_unnorm <- grid_df$likelihood * grid_df$prior
+sum_post <- sum(posterior_unnorm)
+
+if (sum_post > 0) {
+  grid_df$posterior <- posterior_unnorm / sum_post
+} else {
+  grid_df$posterior <- 0
+}
+
+cat("Posterior values calculated.\n")
+cat("Sum of posterior values (after normalization):", sum(grid_df$posterior), "\n")
+```
+
+```{r EDA posterior heatmap, class.source='fold-hide'}
+
+ggplot(grid_df, aes(x = beta1, y = h, fill = posterior)) +
+  geom_raster() +
+  labs(
+    title = "Posterior Distribution Heatmap",
+    x = expression(beta[1]),
+    y = "h (Precision)"
+  ) +
+  theme_minimal()
+```
+
+## Gibbs Sampling
+
+結合事後分布：
+
+$$
+\boxed{p(\beta,h\mid y) \propto h^{\frac{k+\bar{\nu}-2}{2}} \exp\Bigg[
+-\frac{h}{2}\Big\{ (\beta-\bar{\beta})'\bar{Q}^{-1}(\beta-\bar{\beta})+\bar{\nu} \bar{s}^2
+\Big\} \Bigg]\quad \text{（再掲）}}
+$$
+
+ここでは、条件付き事後分布のパラメータを$\{\dot{\beta},\dot{Q},\dot{\nu},\dot{s}\}$と書く。
+
+$\beta$の条件付き事後分布は、解析解で導出済み。すなわち、
+
+$$
+\boxed{\beta|h \sim N(\dot{\beta},h^{-1}\dot Q),}
+$$
+$$
+\text{where}\quad \begin{aligned}
+\dot{Q} &= \bar{Q} = (\underline{Q}^{-1}+X'X)^{-1},\\
+\dot{\beta} &= \bar{\beta}= \bar{Q}(\underline{Q}^{-1}\underline{\beta}+X'X\hat{\beta}).
+\end{aligned}
+$$
+
+一方、$h$については$\beta$を定数項として扱うことで、下記のパラメータに従うGamma分布として定義できる:
+
+$$
+\boxed{h|\beta \sim \gamma(\dot{s}^{-2},\dot{\nu}),}
+$$
+
+$$
+\begin{aligned}
+\dot{\nu}&=\underbrace{\bar{\nu}}_{\underline{\nu}+N}+k,\\
+\dot{\nu}\dot{s}^2 &= \underbrace{\bar{\nu}\bar{s}^2}_{ \underline{\nu}\underline{s}^{2}+\hat{\nu} \hat{s}^2+(\underline{\beta}-\bar{\beta})'\underline{Q}^{-1}(\underline{\beta}-\bar{\beta})  }+({\beta}-\bar{\beta})'\dot{Q}^{-1}({\beta}-\bar{\beta}).
+\end{aligned}
+$$
+
+$\dot{\nu}\dot{s}^2$は、$h$のmarginal posteriorのパラメータ $\bar{\nu} \bar{s}^2$ に$\beta$に依存する$({\beta}-\bar{\beta})'\bar{Q}^{-1}({\beta}-\bar{\beta})$を足したもの。
+
+#### アルゴリズム
+
+- 初期化：
+  $h^{(0)} > 0$ を与える（例：$h^{(0)}=1$）。以後 $s=1,...,S$ を反復。
+
+- Step 1（$\beta | h, y$ をドロー）：
+  $\beta^{(s)} \sim N( \dot\beta , (h^{(s-1)})^{-1} \dot Q )$
+  
+  （直前の $h^{(s-1)}$ を固定して多変量正規分布からサンプル。）
+
+- Step 2（$h | \beta, y$ をドロー）：
+
+  $h^{(s)} \sim \gamma( \dot s^{-2} , \dot \nu)$, where $\dot \nu = \bar \nu + k$, $\dot \nu \dot s^2 = \bar{\nu} \bar{s}^2 + (\beta^{(s)} - \bar{\beta})'\dot{Q}^{-1}(\beta^{(s)} - \bar{\beta})$.
+  
+  （Step 1 の $\beta^{(s)}$ を固定して Gamma 分布からサンプル。）
+
+- 反復：
+
+  上の Step 1–2 を $S$ 回繰り返すと、$\{(\beta^{(s)}, h^{(s)})\}$は $p(\beta,h|y)$ のサンプル列になる
+  （バーンインは適宜捨てる）。
+  
+上でみたとおり、それぞれの条件付き分布のうち、**可変のパラメータは**$\beta$**の**$h^{(s)}$**と**$h$**の**$\dot{s}$**（**$\beta^{(s)}$**を通じて変動）のみ。それ以外のパラメータ**（$\dot{\beta}, \, \dot{Q}, \, \dot{\nu}$）**はループを通じて不変**。
+  
+**メモ**: $\gamma(\dot{s}^{-2} , \dot{\nu})$ と $\Gamma(\text{shape}, \text{rate})$ の対応（R の `rgamma` は shape-rate）
+
+BEM流に$h|\beta, y \sim \gamma( \dot s^{-2} , \dot \nu)$と書くとき、これは密度の核が
+
+$$
+p(h|\beta,y) \propto h ^{{\dot{\nu}}/2-1} \exp \left[-\frac{\dot{\nu}\dot{s}^2}{2}\right], \quad h>0
+$$
+
+したがって、Rの`rgamma`で書くと
+$$
+h \sim \Gamma\left(\text{shape}=\dot{\nu}/2, \,\text{rate}= \frac{\dot{\nu}\dot{s}^2}{2}\right)
+$$
+
+* scaleを使う実装では rate = 1/scaleなので、$\text{scale} = 2 / (\dot{\nu}\dot{s}^2)$。
+
+#### 実装
+
+下記はGibbs samplerを実装する関数。
+
+```{r FUN Gibbs sampling refactor, class.source='fold-show'}
+# Gibbs sampler as a function (Normal–Gamma regression posterior)
+#   beta | h, y  ~ N(beta_bar, h^{-1} Q_bar)
+#   h | beta, y  ~ Gamma(shape = (nu_bar + k)/2,
+#                        rate  = (nu_bar*s2_bar + (beta-beta_bar)'Q_bar^{-1}(beta-beta_bar))/2)
+
+gibbs_ng <- function(beta_bar, Q_bar, nu_bar, s2_bar,
+                     h_init = 1.0, n_samples = 1000, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+
+  k <- nrow(beta_bar)
+  Qbar_inv <- solve(Q_bar)
+  
+  # variables to store the results
+  beta1 <- numeric(n_samples)
+  h_draw <- numeric(n_samples)
+  
+  ### initial h ###
+  current_h <- h_init
+  
+  ### Gibbs iteration ###
+  for (s in seq_len(n_samples)) {
+    ### Step 1: draw beta | h, y ###
+    cov_beta <- Q_bar / current_h  # (h^{-1} Q_bar)
+    b <- MASS::mvrnorm(n = 1, mu = as.numeric(beta_bar), Sigma = cov_beta)
+    
+    # update b -> store beta1 (2nd element)
+    b <- matrix(b, ncol = 1)
+    beta1[s] <- b[2, 1]
+
+    ### Step 2: draw h | beta, y  ###
+    quad <- as.numeric(t(b - beta_bar) %*% Qbar_inv %*% (b - beta_bar))  # scalar
+    shape_h <- (nu_bar + k) / 2
+    rate_h  <- (nu_bar * s2_bar + quad) / 2
+    
+    # update h -> store 
+    current_h <- rgamma(1, shape = shape_h, rate = rate_h)
+    h_draw[s] <- current_h
+  }
+  
+  # return
+  data.frame(
+    iter   = seq_len(n_samples),
+    beta1  = beta1,
+    h      = h_draw,
+    h_init = h_init
+  )
+}
+```
+
+$h^{(0)}=(1, 10000, 0.001)$の3パターンで実行。
+
+ポイント：
+
+- どの初期値から始めても早々に収束
+
+- $h$が小さい（分散が大きい）→$\beta^{(1)}$の分散が大きくなり、収束に数回要している
+
+- $h$が大きい（分散が小さい）→posterior mean（$\bar \beta$）にかなり近い$\beta^{(1)}$のを引くため、すぐに収束
+
+
+```{r REG Gibbs sampling refactor, class.source='fold-show'}
+h_inits <- c(1, 10000, 0.001)
+
+trace_list <- lapply(h_inits, function(h0) {
+  gibbs_ng(
+    beta_bar = beta_post_analytical,
+    Q_bar    = Q_post_analytical,
+    nu_bar   = nu_post_analytical,
+    s2_bar   = s2_post_analytical,
+    h_init   = h0,
+    n_samples = 1000
+  )
+})
+
+trace_df <- do.call(rbind, trace_list)
+trace_df$h_init <- factor(trace_df$h_init, levels = as.character(h_inits))
+```
+
+```{r EXP Gibbs sampling refactor}
+# focus window (change if you want longer)
+trace_df_100 <- subset(trace_df, iter <= 50)
+
+# reference line for beta1 (analytical posterior mean)
+beta1_ref <- beta_post_analytical[2, 1]
+
+# Plot: beta1 trace (3 chains)
+p_beta <- ggplot(trace_df_100, aes(x = iter, y = beta1, color = h_init)) +
+  geom_line() +
+  geom_hline(yintercept = beta1_ref, linetype = 2) +
+  labs(
+    title = expression("Gibbs trace: " * beta[1] * " (first 50 iters)"),
+    x = "Iteration",
+    y = expression(beta[1]),
+    color = expression(h^{(0)})
+  )
+
+# Plot: h trace (3 chains)
+p_h <- ggplot(trace_df_100, aes(x = iter, y = h, color = h_init)) +
+  geom_line() +
+  labs(
+    title = "Gibbs trace: h (first 50 iters)",
+    x = "Iteration",
+    y = "h",
+    color = expression(h^{(0)})
+  )
+
+print(p_beta)
+print(p_h)
+```
+
+# 数学補足
+
+## 1.
+
+一般的に、
+$$
+\begin{aligned}
+&(\beta-\beta_1)'V_1(\beta-\beta_1)+(\beta-\beta_2)'V_2(\beta-\beta_2) \\[1em]
+=& \beta'V_1\beta - 2 \beta'V_1\beta_1+\beta_1'V_1\beta_1+\beta'V_2\beta - 2 \beta'V_2\beta_2+\beta_2'V_2\beta_2\\[1em]
+=& \beta'(\underbrace{ V_1+V_2 }_{\equiv \bar{V}})\beta -2 \beta'(\underbrace{ V_1\beta_1+V_2\beta_2 }_{\equiv b})+\underbrace{ \beta_1'V_1\beta_1+\beta_2'V_2\beta_2 }_{\equiv C}\\
+=&\beta' \bar{V} \beta-2\beta'b+C.
+\end{aligned} 
+$$
+ここで、$b = \bar{V}\bar{\beta}$とおくと、
+$$
+\begin{aligned}
+&\beta' \bar{V} \beta -2 \beta'\bar{V} \bar{\beta}+C\\[1em]
+=&(\beta-\bar{\beta})'\bar{V}(\beta-\bar{\beta})+C-\bar{\beta}'\bar{V}\bar{\beta}'
+\end{aligned} 
+$$
+さらに、
+$$
+\begin{aligned}
+&(\beta_1-\bar{\beta})'V_1(\beta_1-\bar{\beta})+(\beta_2-\bar{\beta})'V_2(\beta_2-\bar{\beta})\\[1em]
+=&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-2\bar{\beta}'(\underbrace{ V_1\beta_1+V_2\beta_2 }_{=b})+\bar{\beta}'(V_1+V_2)\bar{\beta}\\
+=&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-2\underbrace{ \bar{\beta}'\bar{V}\bar{\beta} }_{=\bar{\beta}'b}+\bar{\beta}'\bar{V}\bar{\beta}\\
+=&\beta_1'V_1\beta_1+\beta_2'V_2\beta_2-\bar{\beta}'\bar{V}\bar{\beta}\\[1em]
+=&C-\bar{\beta}'\bar{V}\bar{\beta}.
+\end{aligned} 
+$$
+よって、
+
+$$
+(\beta-\beta_1)'V_1(\beta-\beta_1)+(\beta-\beta_2)'V_2(\beta-\beta_2)=(\beta-\bar{\beta})'\bar{V}(\beta-\bar{\beta})+(\beta_1-\bar{\beta})'V_1(\beta_1-\bar{\beta})+(\beta_2-\bar{\beta})'V_2(\beta_2-\bar{\beta}),
+$$
+
+$$
+\begin{aligned}
+&\bar{V} = V_1+V_2,\\
+&\bar{\beta} = \bar{V}^{-1}(V_1\beta_1+V_2\beta_2)
+\end{aligned} 
+$$
+
+## 2. 尤度の計算（未）
+
+
+
+
