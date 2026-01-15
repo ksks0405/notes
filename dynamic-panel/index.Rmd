@@ -73,7 +73,7 @@ set.seed(1111)
 simulate_dynamic_panel <- function(
     N = 5000,
     T = 8,
-    rho = 0.7, 
+    delta = 0.7, 
     beta = 1.0,
     sigma_mu = 1.0, 
     sigma_u = 1.0,
@@ -82,10 +82,10 @@ simulate_dynamic_panel <- function(
 
   x_type <- match.arg(x_type)
   
-  # Individual fixed effects (mu_i)
+  # Individual fixed effects (c_i)
   mu <- rnorm(N, 0, sigma_mu)
   
-  # Idiosyncratic shocks (u_it)
+  # Idiosyncratic shocks (\varepsilon_it)
   u <- matrix(rnorm(N * T, 0, sigma_u), N, T)
   
   # Regressor x_it (optional)
@@ -102,13 +102,13 @@ simulate_dynamic_panel <- function(
   y <- matrix(0, N, T)
   
   # initial condition (roughly stationary)
-  y[, 1] <- mu + u[, 1] / sqrt(pmax(1e-8, 1 - rho^2))
+  y[, 1] <- mu + u[, 1] / sqrt(pmax(1e-8, 1 - delta^2))
   
   for (tt in 2:T) {
     if (x_type == "none") {
-      y[, tt] <- rho * y[, tt - 1] + mu + u[, tt]
+      y[, tt] <- delta * y[, tt - 1] + mu + u[, tt]
     } else {
-      y[, tt] <- rho * y[, tt - 1] + beta * x[, tt] + mu + u[, tt]
+      y[, tt] <- delta * y[, tt - 1] + beta * x[, tt] + mu + u[, tt]
     }
   }
   
@@ -136,14 +136,14 @@ simulate_dynamic_panel <- function(
 
 `simulate_dynamic_panel`関数を使ってデータセットを作成。
 
-- 各idは同一の$\rho$のAR(1)に従う。
+- 各idは同一の$\delta$のAR(1)に従う。
 
 - id固有の切片のため、平均的な水準が異なる。
 
 ```{r IMP simulation data}
-rho_true <- 0.8
-data_small <- simulate_dynamic_panel(rho = rho_true, N = 10, T = 5, x_type = "none")
-data_big <- simulate_dynamic_panel(rho = rho_true, N = 1000, T = 5, x_type = "none")
+delta_true <- 0.8
+data_small <- simulate_dynamic_panel(delta = delta_true, N = 10, T = 5, x_type = "none")
+data_big <- simulate_dynamic_panel(delta = delta_true, N = 1000, T = 5, x_type = "none")
 ```
 
 $T$が短いため違いが分かりづらいが、各idで平均的な水準が異なるAR(1)に従う。
@@ -157,12 +157,12 @@ data_small %>%
   labs(
     title = "Simulated Data",
     subtitle = expression(
-      y[it] == rho * y[i,t-1] + mu[i] + u[it] ~ ",  " ~ rho == rho_true
+      y[it] == delta * y[i,t-1] + mu[i] + u[it] ~ ",  " ~ delta == delta_true
     ),
     x = "Time (t)",
     y = expression(y[it]),
     color = "Individual (i)",
-    caption = "Dashed lines: stationary means: mu_i / (1 - rho)"
+    caption = "Dashed lines: stationary means: c_i / (1 - delta)"
   )
 ```
 
@@ -171,67 +171,61 @@ data_small %>%
 DGPは以下のように表される：
 
 $$
-y_{it} = \rho y_{i,t-1} + \mu_i + u_{it}.
+y_{it} = \delta y_{i,t-1} + c_i + \varepsilon_{it} \quad \text{(Greene p.436)}.
 $$
+\* Chap. 11.8.4。Chap. 11.8.3 （$(11-63)$式以降）でも同じ議論をしている。
 
-- $\mu_i$：個体固定効果（時間不変・観測不能）
+- $c_i$：個体固定効果（時間不変・観測不能）
 
-- $u_{it}$：平均$0$のi.i.d.誤差項
+- $\varepsilon_{it}$：平均$0$のi.i.d.誤差項
 
 - $T$：固定（small $T$）
 
 - $N \rightarrow \infty$
 
-## within 変換
+## within 変換によるバイアス
 
-固定効果$\mu_i$を除去するため、個体 $i$ごとの時間平均を引く：
+固定効果$c_i$を除去するため、個体 $i$ごとの時間平均を引く：
 
 $$
 \tilde y_{it} = y_{it} - \bar y_i,
-\qquad
-\bar y_i = \frac{1}{T}\sum_{t=1}^T y_{it}.
+\quad
+\bar y_i = \frac{1}{T}\sum_{t=1}^T y_{it},
+\quad
+\tilde \varepsilon_{it} = \varepsilon_{it} - \bar \varepsilon_i,
+\quad
+\bar \varepsilon_i = \frac{1}{T}\sum_{t=1}^T \varepsilon_{it}.
 $$
 
 このとき、
 
 $$
-\tilde y_{it}
-= \rho (y_{i,t-1} - \bar y_i) + (u_{it} - \bar u_i),
+\underbrace{ y_{i,t}-\bar y_i }_{\tilde y_{it}}
+= \delta (\underbrace{ y_{i,t-1} - \bar y_i }_{\tilde y_{i,t-1}}) + (\underbrace{ \varepsilon_{it} - \bar \varepsilon_i }_{\varepsilon_{i,t}}),
 $$
 
-すなわち
+
+(1) ラグ付き従属変数 $y_{i,t-1}$ は過去の誤差 $\varepsilon_{i,t-1}$ を含む：
 
 $$
-\tilde y_{it} = \rho \tilde y_{i,t-1} + \tilde u_{it},
-\qquad
-\tilde u_{it} = u_{it} - \bar u_i,
-\qquad
-\bar u_i = \frac{1}{T}\sum_{t=1}^T u_{it}.
+y_{i,t-1} = \delta y_{i,t-2} + c_i + \varepsilon_{i,t-1}.
 $$
 
-## バイアスの源泉（Nickell bias）
-
-(1) ラグ付き従属変数 $y_{i,t-1}$ は過去の誤差 $u_{i,t-1}$ を含む：
-
-$$
-y_{i,t-1} = \rho y_{i,t-2} + \mu_i + u_{i,t-1}.
-$$
-
-(2) within 後の誤差項 $\tilde u_{it}$ は平均誤差 $\bar u_i$ を含む。
-$\bar u_i$ の中には $u_{i,t-1}$ が重み $1/T$ で含まれる。
+(2) within 後の誤差項 $\tilde \varepsilon_{it}$ は平均誤差 $\bar \varepsilon_i$ を含む。
+$\bar \varepsilon_i$ の中には $\varepsilon_{i,t-1}$ が重み $1/T$ で含まれる。
 
 したがって、within 変換後には機械的に
 
 $$
-\operatorname{Cov}(\tilde y_{i,t-1}, \tilde u_{it}) \neq 0
+\operatorname{Cov}(\tilde y_{i,t-1}, \tilde \varepsilon_{it}) \simeq  -\frac{\sigma_{\varepsilon}^2}{T^2}\frac{{(T-1)-T\delta+\delta^T}}{(1-\delta)^2}\neq 0　\quad \text{(Greene p. 437)}
 $$
-
+	
 が生じ、OLS の外生性条件が破れる。
 
 $T$ 固定のとき、within 推定量の漸近バイアスは
 
 $$
-\operatorname{Bias}(\hat\rho_{FE}) \approx -\frac{1+\rho}{T-1}.
+\operatorname{Bias}(\hat\delta_{FE}) \approx -\frac{1+\delta}{T-1}.
 $$
 
 含意：
@@ -242,9 +236,13 @@ $$
 
 - $T$ を増やすと縮小する
 
+直観：
+
+- 自己回帰モデルでは、$y_t$は$\varepsilon_t$の累積和によって表現されるため、これらの平均は当然相関する（？）
+
 ## バイアスの確認
 
-通常のOLSで回帰。$\rho$が真の値（`r rho_true`）よりも小さくなる。
+通常のOLSで回帰。$\delta$が真の値（`r delta_true`）よりも小さくなる。
 
 ```{r REG fe regression}
 # 1) within(FE)回帰（単純AR: y ~ lag(y,1)）
@@ -293,8 +291,8 @@ p_level <- ggplot(df_use2, aes(x = y_lag, y = u)) +
   geom_point(alpha = 0.25) +
   geom_smooth(method = "lm", se = FALSE) +
   labs(
-    title = "y_{i,t-1} vs u_{it}",
-    subtitle = "In the DGP, u_it is independent of past y",
+    title = "y_{i,t-1} vs \varepsilon_{it}",
+    subtitle = "In the DGP, \varepsilon_it is independent of past y",
     x = expression(y[i*","*t-1]),
     y = expression(u[it])
   )
@@ -326,9 +324,34 @@ ab <- pgmm(
 coef(ab)
 ```
 
-# Arellan-Bond 推定量の算出
+# Arellano-Bond 推定量
 
-In "uncollapsed form", the regression matrices are constructed as follows:
+## アイデア
+
+Anderson and Hsiao  (1981, 1982) は、group meanではなくfirst differences に基づくアプローチを考案した：（Greene p. 437）
+
+$$ y_{i,t}-y_{i,t-1} = \delta (y_{i,t-1}-y_{i,t-2}) + \varepsilon_{i,t}-\varepsilon_{i,t-1}, \quad t = 3, \dots, T $$
+（$t=3$からスタートしているのは、1期ラグ＋階差）
+
+最初の観測（$t = 3$）についてみると、
+$$ y_{i,3}-y_{i,2} = \delta (y_{i,2}-y_{i,1}) + \varepsilon_{i,3}-\varepsilon_{i,2}, $$
+すなわち2期前のレベル $y_{i,1} \, \forall i$ が誤差項と相関しないため、操作変数として利用可能。
+次の観測（$t = 4$）についてみると、
+$$ y_{i,4}-y_{i,3} = \delta (y_{i,3}-y_{i,2}) + \varepsilon_{i,4}-\varepsilon_{i,3}, $$
+すなわち2期前のレベル $y_{i,2} \, \forall i$ に加え、2期前の差分$y_{i,2}-y_{i,1} \, \forall i$ と3期前のレベル$y_{i,1} \, \forall i$も利用可能になる。
+
+このように、$t$によって操作変数の数が異なることを許容するため、例えば$t=3$のときの被説明変数、説明変数、操作変数を、
+
+$$ 
+Z_{(3)} =\begin{pmatrix}y_{1,1} \\y_{2,1} \\\vdots \\y_{n,1}\end{pmatrix}, \quad
+\tilde{X}_{(3)} =\begin{pmatrix} y_{1,2}-y_{1,1} \\ y_{2,2}-y_{2,1} \\ \vdots \\ y_{n,2}-y_{n,1} \end{pmatrix} \quad 
+\tilde{y}_{(3)}  =\begin{pmatrix} y_{1,3}-y_{1,2} \\ y_{2,3}-y_{2,2} \\ \vdots \\ y_{n,3}-y_{n,2} \end{pmatrix} ,
+$$
+$$  $$
+
+このようにして構成した$T-2$個の操作変数推定量$\{\hat{\theta}_{IV(3)}, \hat{\theta}_{IV(4)},\dots ,\hat{\theta}_{IV(T)}\}$ のMDE推定量が考えられる。
+
+Arellan-Bond推定量は、代わりに以下のような推計行列を考える：
 
 $$
 \underbrace{y}_{N(T-2)\times1} =
@@ -358,6 +381,9 @@ y_{10,1}& 0       & 0       & 0       & 0       & 0 \\
 0       & 0       & 0       & y_{10,1}& y_{10,2}& y_{10,3}
 \end{pmatrix}
 $$
+
+
+★ Arellano and Bond は、XX をウエイト行列とする MDE ？　Greene p442
 
 " Chat GPT: uncollapsed と collapsedの違いは、「同じモーメント条件を、方程式ごとに別々の列として持つか、ラグごとにまとめて1列に潰すか」という **Z 行列の作り方（列の持ち方）**の違いです。モデルも仮定も同じで、**違うのは“計数（次元）と有限標本挙動”**だけです。
 
@@ -512,13 +538,13 @@ estimate_models <- function(df, iv_lags = 2:4) {
   }
   
   coefs <- c(
-    rho_pooled  = getc(pooled, "lag(y, 1)"),
+    delta_pooled  = getc(pooled, "lag(y, 1)"),
     beta_pooled = getc(pooled, "x"),
-    rho_fe      = getc(fe, "lag(y, 1)"),
+    delta_fe      = getc(fe, "lag(y, 1)"),
     beta_fe     = getc(fe, "x"),
-    rho_ab1     = getc(ab1, "lag(y, 1)"),
+    delta_ab1     = getc(ab1, "lag(y, 1)"),
     beta_ab1    = getc(ab1, "x"),
-    rho_ab2     = getc(ab2, "lag(y, 1)"),
+    delta_ab2     = getc(ab2, "lag(y, 1)"),
     beta_ab2    = getc(ab2, "x")
   )
   
@@ -534,7 +560,7 @@ estimate_models <- function(df, iv_lags = 2:4) {
 
 mc_run <- function(R = 200,
                    N = 5000, T = 8,
-                   rho = 0.7, beta = 1.0,
+                   delta = 0.7, beta = 1.0,
                    iv_lags = 2:4,
                    x_type = c("exogenous", "endogenous"),
                    endog_strength = 0.5,
@@ -543,14 +569,14 @@ mc_run <- function(R = 200,
   x_type <- match.arg(x_type)
   
   coef_mat <- matrix(NA_real_, nrow = R, ncol = 8)
-  colnames(coef_mat) <- c("rho_pooled","beta_pooled","rho_fe","beta_fe",
-                          "rho_ab1","beta_ab1","rho_ab2","beta_ab2")
+  colnames(coef_mat) <- c("delta_pooled","beta_pooled","delta_fe","beta_fe",
+                          "delta_ab1","beta_ab1","delta_ab2","beta_ab2")
   
   diag_mat <- matrix(NA_real_, nrow = R, ncol = 4)
   colnames(diag_mat) <- c("ar2_p_ab1","ar2_p_ab2","hansen_p_ab1","hansen_p_ab2")
   
   for (r in seq_len(R)) {
-    df  <- simulate_dynamic_panel(N=N, T=T, rho=rho, beta=beta,
+    df  <- simulate_dynamic_panel(N=N, T=T, delta=delta, beta=beta,
                                   x_type=x_type, endog_strength=endog_strength)
     est <- estimate_models(df, iv_lags=iv_lags)
     
@@ -577,10 +603,10 @@ mc_run <- function(R = 200,
   }
   
   summary_tbl <- rbind(
-    pooled_rho  = summarize_est(coef_df$rho_pooled,  rho),
-    fe_rho      = summarize_est(coef_df$rho_fe,      rho),
-    ab1_rho     = summarize_est(coef_df$rho_ab1,     rho),
-    ab2_rho     = summarize_est(coef_df$rho_ab2,     rho),
+    pooled_delta  = summarize_est(coef_df$delta_pooled,  delta),
+    fe_delta      = summarize_est(coef_df$delta_fe,      delta),
+    ab1_delta     = summarize_est(coef_df$delta_ab1,     delta),
+    ab2_delta     = summarize_est(coef_df$delta_ab2,     delta),
     pooled_beta = summarize_est(coef_df$beta_pooled, beta),
     fe_beta     = summarize_est(coef_df$beta_fe,     beta),
     ab1_beta    = summarize_est(coef_df$beta_ab1,    beta),
@@ -599,7 +625,7 @@ mc_run <- function(R = 200,
 }
 
 # ---- Run (exogenous x) ----
-ans_exog <- mc_run(R=200, N=5000, T=8, rho=0.7, beta=1.0, iv_lags=2:4, x_type="exogenous")
+ans_exog <- mc_run(R=200, N=5000, T=8, delta=0.7, beta=1.0, iv_lags=2:4, x_type="exogenous")
 print(round(ans_exog$summary, 4))
 print(round(ans_exog$diag_summary, 4))
 
