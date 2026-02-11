@@ -225,10 +225,10 @@ The system can be expressed in the following matrix form:
 
 $$
 \begin{align}
-  \underset{(n+m) \times (n+m)} A \begin{bmatrix} \underset{(n \times 1)} {x_{t+1}} \\ \underset{(m \times 1)} {\mathbb{E}_t[y_{t+1}]} \end{bmatrix} &= 
-    \underset{(n+m) \times (n+m)} B  \begin{bmatrix} \underset{(n \times 1)} {x_{t}} \\ \underset{(m \times 1)} {y_{t}} \end{bmatrix} +  \underset{(n+m) \times k} E \quad \underset{k \times 1}{a_t} \\[1em]
+  \underset{(n+m) \times (n+m)} B \begin{bmatrix} \underset{(n \times 1)} {x_{t+1}} \\ \underset{(m \times 1)} {\mathbb{E}_t[y_{t+1}]} \end{bmatrix} &= 
+    \underset{(n+m) \times (n+m)} A \begin{bmatrix} \underset{(n \times 1)} {x_{t}} \\ \underset{(m \times 1)} {y_{t}} \end{bmatrix} +  \underset{(n+m) \times k} E \quad \underset{k \times 1}{a_t} \\[1em]
   \Leftrightarrow \begin{bmatrix} x_{t+1} \\ \mathbb{E}_t[y_{t+1}] \end{bmatrix} &= 
-    \underset{(n+m) \times (n+m)} F \begin{bmatrix} x_t \\ y_t \end{bmatrix} + G a_t, \tag{9.69}
+    \underset{(n+m) \times (n+m)} F \begin{bmatrix} x_t \\ y_t \end{bmatrix} + G a_t, \tag{10.26}
 \end{align}
 $$
 
@@ -271,89 +271,102 @@ $$
 Partition $H^{-1}$ and $J$ into blocks of size $n$ and $m$ and introduce new variables:
 
 $$
-\begin{align}
+\begin{equation*}
   H^{-1} =\begin{bmatrix} \underset{n \times n}{\tilde{H}_{11}} & \underset{n \times m}{\tilde{H}_{12}} \\ \underset{m \times n}{\tilde{H}_{21}} & \underset{m \times m }{\tilde{H}_{22}} \end{bmatrix}, \quad
-  J = \begin{bmatrix} \underset{n \times n}{J_1} & \underset{n \times m}0 \\ \underset{m \times n}0 & \underset{m \times m}{J_2} \end{bmatrix}
-\end{align}
+  J = \begin{bmatrix} \underset{n \times n}{J_1} & \underset{n \times m}0 \\ \underset{m \times n}0 & \underset{m \times m}{J_2} \end{bmatrix}.
+\end{equation*}
 $$
 
 Then equation (9.71) becomes:
 
 $$
 \begin{align}
-  \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} x_t \\ y_t \end{bmatrix} &= \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} J_1 & 0 \\ 0 & J_2 \end{bmatrix} \begin{bmatrix} \tilde{x}_t \\\tilde{y}_t  \end{bmatrix} + H^{-1}G a_{t} \\[1em]
+  \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} x_t \\ y_t \end{bmatrix} &= \begin{bmatrix} J_1 & 0 \\ 0 & J_2 \end{bmatrix} \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} \tilde{x}_t \\\tilde{y}_t  \end{bmatrix} + H^{-1}G a_{t} \\[1em]
   \Leftrightarrow \begin{bmatrix} \tilde{x}_{t+1} \\ \mathbb{E}_t[\tilde{y}_{t+1}] \end{bmatrix} &=
 \begin{bmatrix} J_1 & 0 \\ 0 & J_2 \end{bmatrix} \begin{bmatrix} \tilde{x}_t \\\tilde{y}_t  \end{bmatrix} +
 \begin{bmatrix} \Gamma_1 \\ \Gamma_2 \end{bmatrix} a_t \\[1em]
  \Leftrightarrow & \left\{ \begin{array} \tilde{x}_{t+1} &=  J_1 \tilde{x_t} + \Gamma_1 a_t\\
-                                        \mathbb{E}_t[\tilde{y}_{t+1}] &= J_2 \tilde{y_t} + \Gamma_1 a_t
- \end{array}\right.
+                                        \mathbb{E}_t[\tilde{y}_{t+1}] &= J_2 \tilde{y_t} + \Gamma_2 a_t
+ \end{array}\right. , 
 \end{align}
 $$
 
 where
 
 $$
-\begin{bmatrix} \tilde{x}_t \\ \tilde{y}_t \end{bmatrix} = \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} x_t \\ y_t \end{bmatrix}. \tag{9.72}\\
-H^{-1}G = \begin{bmatrix} \underset{n \times k}{\Gamma_1} \\ \underset{m \times k}{\Gamma_2} \end{bmatrix}.
+\begin{bmatrix} \tilde{x}_t \\ \tilde{y}_t \end{bmatrix} = \begin{bmatrix} \tilde{H}_{11} & \tilde{H}_{12} \\ \tilde{H}_{21} & \tilde{H}_{22} \end{bmatrix} \begin{bmatrix} x_t \\ y_t \end{bmatrix}, \tag{9.72}\\
+\Gamma = \begin{bmatrix} \underset{n \times k}{\Gamma_1} \\ \underset{m \times k}{\Gamma_2} \end{bmatrix} = H^{-1}G.
 $$
 
-### Step 4. Derive the Solution
+### Step 4. Solving $y_t$ Using Non-exploding Condition.
 
-Observe that the lower $m$ rows of the transformed system has an exploding AR1 coefficient matrix $J_2$:
+The lower block of the partition is expressed as:
 
 $$
 \mathbb{E}_t[\tilde{y}_{t+1}] = J_2 \tilde{y}_t + \Gamma_2 a_t.
 $$
+Assuming the exogenous shock process follows $a_{t+1} = \rho a_t + \epsilon_{t+1}$, where $\rho$ is a $k \times k$ matrix, we can derive the forward iterations step-by-step:
 
 $$
 \begin{align}
-  \mathbb{E}_t[\tilde{y}_{t+2}] &= \mathbb{E}_t[\mathbb{E}_{t+1}[\tilde{y}_{t+2}]] \\[1em]
-  &= J_2 \mathbb{E}_t[\tilde{y}_{t+1}] + \Gamma_2 \mathbb{E}_t[a_{t+1}] \\[1em] 
-  &= J_2^2 \tilde{y}_t + J_2 \Gamma_2 a_t + \Gamma_2 \rho a_t \\[1em]
-  &= J_2^2 \left[ \tilde{y}_t + \frac{\Gamma_2}{J_2} \left( 1 + \frac{\rho}{J_2} \right) z_t \right], \\[2em]
-  \mathbb{E}_t[\tilde{y}_{t+3}] &= J_2^3 \left[ \tilde{y}_t + \frac{\Gamma_2}{J_2} \left( 1 + \frac{\rho}{J_2} + \Big(\frac{\rho}{J_2}\Big)^2 \right) z_t \right],\\[2em]
-  \mathbb{E}_t[\tilde{y}_{t+T}] &= J_2^T \left[ \tilde{y}_t + \frac{\Gamma_2}{J_2} \left( 1 + \frac{\rho}{J_2} + \Big(\frac{\rho}{J_2}\Big)^2  ... + \Big(\frac{\rho}{J_2}\Big)^{T-1}\right) z_t \right]\\[1em]
-  &= J_2^T \left[ \tilde{y}_t + \frac{\Gamma_2}{J_2} \frac{1-\Big(\frac{\rho}{J_2}\Big)^T}{1-\Big(\frac{\rho}{J_2}\Big)} z_t \right]\\[1em]
-  &= J_2^T \left[ \tilde{y}_t + \Gamma_2 \frac{1-\Big(\frac{\rho}{J_2}\Big)^T}{J_2-\rho} z_t \right].\\[2em]
-  \lim_{T \to \infty} \mathbb{E}_t[\tilde{y}_{t+T}] &= \tilde{y}_t + \frac{\Gamma_2}{J_2-\rho} z_t
+  \mathbb{E}_t[\tilde{y}_{t+2}] &= \mathbb{E}_t[\mathbb{E}_{t+1}[\tilde{y}_{t+2}]]  \\[1em]
+  &= \mathbb{E}_t [J_2 \tilde{y}_{t+1} + \Gamma_2 a_{t+1}] \\[1em]
+  &= J_2 (J_2 \tilde{y}_t + \Gamma_2 a_t) + \Gamma_2 \rho a_t \\[1em]
+
+  &= J_2^2 \left[ \tilde{y}_t + (J_2^2)^{-1} (J_2 \Gamma_2 + \Gamma_2 \rho) a_t \right], \\[2em]
+  \mathbb{E}_t[\tilde{y}_{t+3}] &= J_2^3 \left[ \tilde{y}_t + (J_2^3)^{-1} (J_2^2 \Gamma_2 + J_2 \Gamma_2 \rho + \Gamma_2 \rho^2) a_t \right], \\[2em]
+  &\vdots \notag \\[1em]
+  \mathbb{E}_t[\tilde{y}_{t+T}] &= J_2^T \left[ \tilde{y}_t + (J_2^T)^{-1} \left( \sum_{j=0}^{T-1} J_2^{T-1-j} \Gamma_2 \rho^j \right) a_t \right] \\[1em]
+  &= J_2^T \left[ \tilde{y}_t + \left( \sum_{j=0}^{T-1} J_2^{-(j+1)} \Gamma_2 \rho^j \right) a_t \right].
 \end{align}
 $$
 
-In order for the system not to explode, and since
+Observe that $J_2$ is a diagonal matrix with all elements **greater than 1**. Thus, in order for the system not to explode (Transversality Condition), the non-predetermined variables must satisfy:
 
 $$
-\tilde{y}_t = \tilde{H}_{21} x_t + \tilde{H}_{22} y_t,
+\tilde{y}_t = - \sum_{j=0}^{\infty} J_2^{-(j+1)} \Gamma_2 \rho^j a_t.
 $$
 
-we can substitute to get:
+To simplify the notation, we define the $m \times k$ coefficient matrix $\Omega$ such that:
 
 $$
-\Lambda \Gamma_2 a_t = \tilde{H}_{21} x_t + \tilde{H}_{22} y_t,
+\tilde{y}_t = \Omega a_t, \quad \text{where} \quad \Omega = - \sum_{j=0}^{\infty} J_2^{-(j+1)} \Gamma_2 \rho^j.
 $$
 
-where $\Lambda$ is an $m \times m$ diagonal matrix with entries
+Note that if the shock persistence matrix $rho$ is a diagonal matrix, i.e. $\rho = \text{diag}(\rho_1, \dots, \rho_k)$, then the $(i, \ell)$-th entry of $\Omega$, denoted by $\omega_{i, \ell}$, is derived as follows:
 
 $$
-\Lambda_{ii} = -\frac{1}{\lambda_i - \rho}, \quad \text{for } i = n+1, \dots, n+m.
+\begin{align}
+  \omega_{i, \ell} &= - \sum_{j=0}^{\infty} (\lambda_{n+i})^{-(j+1)} \gamma_{i, \ell} (\rho_\ell)^j \\[1em]
+  &= - \frac{\gamma_{i, \ell}}{\lambda_{n+i}} \sum_{j=0}^{\infty} \left( \frac{\rho_\ell}{\lambda_{n+i}} \right)^j \\[1em]
+  &= - \frac{\gamma_{i, \ell}}{\lambda_{n+i} - \rho_\ell},
+\end{align}
+$$
+
+where $\gamma_{i, \ell}$ is the $(i, \ell)$-th entry of $\Gamma_2$.
+
+Thus, the transformed system yields the relation $\tilde{y}_t = \Omega a_t$. Substituting $\tilde{y}_t$ back with $x_t$ and $y_t$, the jumping variables $y_t$ must satisfy:
+
+$$
+\Omega a_t = \tilde{H}_{21} x_t + \tilde{H}_{22} y_t.
 $$
 
 Solving for $y_t$, we obtain:
 
 $$
 \begin{align}
-  y_t &= -\tilde{H}_{22}^{-1} \tilde{H}_{21} x_t + \tilde{H}_{22}^{-1} \Lambda \Gamma_2 a_t\\[1em]
+  y_t &= -\tilde{H}_{22}^{-1} \tilde{H}_{21} x_t + \tilde{H}_{22}^{-1} \Omega a_t \\[1em]
     &= A x_t + B a_t.
 \end{align}
 $$
 
-Substituting back into equation (9.69): 
+Finally, substituting this decision rule into the transition equation for the predetermined variables $x_t$:
 
 $$
 \begin{align}
 x_{t+1}
 &= F_{11} x_t + F_{12} y_t + G_1 a_t \\[1em]
-&= \left(F_{11} - F_{12} \tilde{H}_{22}^{-1} \tilde{H}_{21} \right) x_t + \left( G_1 + F_{12} \tilde{H}_{22}^{-1} \Lambda \Gamma_2 \right) a_t \\[1em]
+&= \left(F_{11} - F_{12} \tilde{H}_{22}^{-1} \tilde{H}_{21} \right) x_t + \left( G_1 + F_{12} \tilde{H}_{22}^{-1} \Omega \right) a_t \\[1em]
 &= C x_t + D a_t.
 \end{align}
 $$
@@ -381,114 +394,195 @@ $$
 
 ### R code
 
-```{r SET bk function old, eval = F, include=F}
-my_blanchard_kahn_old <- function(F_matrix, G_matrix, rho) {
-  my_ifelse <- function(test, yes, no){
-    if(test){return(yes)}else{return(no)}
+```{r SET bk function}
+my_blanchard_kahn <- function(A_matrix, B_matrix, E_matrix = NULL, rho = 0) {
+  # Refined Blanchard-Kahn Solver: Supports named indexing and n=0 cases
+  # Solution form: y_t = sol_ytxt * x_t + sol_ytat * a_t
+  
+  my_ifelse <- function(test, yes, no){if(test){return(yes)}else{return(no)}}
+  
+  # --- 1. Initial Setup and Integrity Checks ---
+  if ((dim(A_matrix)[[1]] != dim(A_matrix)[[2]]) | (dim(B_matrix)[[1]] != dim(B_matrix)[[2]]) | (dim(A_matrix)[[1]] != dim(B_matrix)[[1]])) {
+    stop("Matrix A and B must be square matrices with the same dimensions.")
   }
-  # Mukoyama macro pp 281
-  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-  # y{t+1} = F*y{t}+G
-  # 
-  #    n [x{t+1}]   n[J1  0]     n[x{t}]   [Gamma1][a{t}] 
-  # => m [y{t+1}] = m[ 0 J2] %*% m[y{t}] + [Gamma2][a{t}]
-  #          1         n  m         1
-  #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
-  # F_matrix <- FF
-  # G_matrix <- G
-  # rho <- 0
+  if(is.null(colnames(A_matrix))){
+    stop("A matrix must have variable names in columns.")
+  }
 
-  # Jordan Decomposition
-  ### Calculate eigenvalues and eigenvectors of the F matrix
+  n_vars_all <- NCOL(A_matrix)
+  vars_all <- colnames(A_matrix)
+  
+  if(is.null(E_matrix)) {
+    E_matrix <- matrix(0, n_vars_all, 1)
+    colnames(E_matrix) <- "shock"
+  }
+  k <- NCOL(E_matrix)
+  shk_names <- colnames(E_matrix)
+  
+  # Prepare rho as a vector for element-wise Omega calculation
+  rho_vec <- if(length(rho) == 1) rep(rho, k) else rho
+  
+  # Initialize all potential solution objects to NULL
+  sol_ytxt <- sol_ytat <- sol_xt1xt <- sol_xt1at <- sol_yt1xt <- sol_yt1at <- NULL
+  sol_t1t <- sol_t1a <- sol_tt <- sol_ta <- NULL
+
+  # --- 2. System Reduction (E. Sims) ---
+  cat("### System Reduction following E. Sims ### \n")
+  vars_q <- as_tibble(B_matrix, rownames = "variable") %>% 
+    filter(if_all(-variable, function(x){x == 0})) %>% 
+    pluck("variable")
+  
+  q <- length(vars_q)
+  vars_nm <- setdiff(vars_all, vars_q)
+  
+  if(q > 0) {
+    cat("   The following", q, "variable(s) are redundant:", "\n", vars_q, "\n")
+    A_nm_nm <- A_matrix[vars_nm, vars_nm]
+    A_nm_q  <- A_matrix[vars_nm, vars_q]
+    A_q_nm  <- A_matrix[vars_q, vars_nm]
+    A_q_q   <- A_matrix[vars_q, vars_q]
+    B_nm_nm <- B_matrix[vars_nm, vars_nm]
+    B_nm_q  <- B_matrix[vars_nm, vars_q]
+    E_nm    <- E_matrix[vars_nm, , drop = FALSE]
+    
+    Psi <- -solve(A_q_q) %*% A_q_nm
+    F_matrix <- solve(B_nm_nm + B_nm_q %*% Psi) %*% (A_nm_nm + A_nm_q %*% Psi)
+    G_matrix <- solve(B_nm_nm + B_nm_q %*% Psi) %*% E_nm
+  } else {
+    cat("   No redundant variables are found. \n")
+    F_matrix <- solve(B_matrix) %*% A_matrix
+    G_matrix <- solve(B_matrix) %*% E_matrix
+  }
+  
+  # Ensure F and G have consistent names
+  dimnames(F_matrix) <- list(vars_nm, vars_nm)
+  dimnames(G_matrix) <- list(vars_nm, shk_names)
+
+  # --- 3. Decomposition and Stability Analysis ---
+  cat("\n### Solving Model by Blanchard-Kahn Method ### \n")
   eig_result <- eigen(F_matrix)
-  m <- sum(eig_result$values>=1) # non-predetermined endogenous (y)
-  n <- NCOL(F_matrix) - m # predetermined (x)
-  k <- NCOL(G_matrix) # shock (k)
-
-  ### Sort the eigenvalues and eigenvectors by the modulus of the eigenvalues
-  sorted_eigenvalues <- eig_result$values[order(Mod(eig_result$values))]
-  sorted_eigenvectors <- eig_result$vectors[, order(Mod(eig_result$values))]
   
-  print(`names<-`(sorted_eigenvalues, str_c("Eig.Val", 1:(m+n))) %>% round(4))
-  cat("Solving the model by B-K method", "\n")
-  cat("Predetermined x(n): ", n, "\n")
-  cat("Non-predetermined y(m): ", m, "\n")
-  cat("Exogeneous Shock   (k): ", k)
+  # Identification: Modulus >= 1 are non-predetermined
+  m <- sum(Mod(eig_result$values) >= 1.000001) 
+  n <- NCOL(F_matrix) - m
   
-  ### Create partitioned F and G
-  FF_11 <- my_ifelse(n > 0, F_matrix[1:n, 1:n, drop=F], NA_real_)
-  FF_12 <- my_ifelse(n > 0, F_matrix[1:n, (n+1):(n+m), drop=F], NA_real_)
-  FF_21 <- my_ifelse(n > 0, F_matrix[(n+1):(n+m), 1:n, drop=F], NA_real_)
-  FF_22 <- F_matrix[(n+1):(n+m), (n+1):(n+m), drop=F]
-  G_1 <- my_ifelse(n >0, G_matrix[1:n, 1:k, drop=F], NA_real_)
-  G_2 <- G_matrix[(n+1):(n+m), 1:k, drop=F]
+  idx_sort <- order(Mod(eig_result$values))
+  sorted_eigenvalues <- eig_result$values[idx_sort]
+  H <- eig_result$vectors[, idx_sort]
+  
+  # Assign names to H for traceability
+  dimnames(H) <- list(vars_nm, vars_nm)
+  
+  # Group variable names
+  x_names <- if(n > 0) vars_nm[1:n] else NULL
+  y_names <- if(m > 0) vars_nm[(n+1):(n+m)] else NULL
 
-  ### Create the H and J matrices based on the sorted results.
-  H <- sorted_eigenvectors
-  J <- diag(sorted_eigenvalues)
-  dimnames(H) <- dimnames(J) <- list(rownames(F_matrix), colnames(F_matrix))
+  # Diagnostic Output
+  cat("   ", n, " Predetermined     x(n): ", if(n > 0) x_names else "None", "\n")
+  cat("   ", m, " Non-predetermined y(m): ", if(m > 0) y_names else "None", "\n")
+  cat("   ", k, " Exogenous         (k): ", k, "\n")
+  cat("    Sorted eigenvalues: ", round(sorted_eigenvalues, 4), "\n")
+  
+  # --- 4. Partitioning and Omega Derivation ---
   Hinv <- solve(H)
-  Hinv_11 <- my_ifelse(n > 0,  Hinv[1:n, 1:n, drop=F], NA_real_)
-  Hinv_12 <- my_ifelse(n > 0, Hinv[1:n, (n+1):(n+m), drop=F], NA_real_)
-  Hinv_21 <- my_ifelse(n > 0, Hinv[(n+1):(n+m), 1:n, drop=F], NA_real_)
-  Hinv_22 <- Hinv[(n+1):(n+m), (n+1):(n+m), drop=F]
-  J_1 <-  J[1:n, 1:n, drop=F]
-  J_2 <- J[(n+1):(n+m), (n+1):(n+m), drop=F]
-  ### shocks
-  Gamma <- Hinv %*% G
-  Gamma_1 <- my_ifelse(n > 0, Gamma[1:n,1:k, drop=F], NA_real_)
-  Gamma_2 <- Gamma[(n+1):(n+m),1:k, drop=F]
+  J_2  <- sorted_eigenvalues[(n+1):(n+m)]
   
-  ### Deriving the Solution (pp.284)
-  Lambda <- diag(-1/(diag(as.matrix(J_2))-rho), nrow = m)
+  Hinv_21 <- if(n > 0) Hinv[(n+1):(n+m), 1:n, drop=FALSE] else NULL
+  Hinv_22 <- Hinv[(n+1):(n+m), (n+1):(n+m), drop=FALSE]
+  
+  Gamma   <- Hinv %*% G_matrix
+  Gamma_2 <- Gamma[(n+1):(n+m), , drop=FALSE]
+  
+  # omega_{i,l} = - gamma_{i,l} / (lambda_{n+i} - rho_l)
+  denom <- matrix(J_2, m, k) - matrix(rho_vec, m, k, byrow = TRUE)
+  Omega <- - Gamma_2 / denom 
+  dimnames(Omega) <- list(y_names, shk_names)
+  
+  # --- 5. Deriving Policy Functions ---
   Hinv_22_inv <- solve(Hinv_22)
-  if(n > 0){
-    sol_ytxt <- - Hinv_22_inv %*% Hinv_21 ### A
-    sol_ytat <- Hinv_22_inv %*% Lambda %*% Gamma_2 ### B
-    sol_xt1xt <- FF_11 - FF_12 %*% (-sol_ytxt) ### C
-    sol_xt1at <- G_1 + FF_12 %*% sol_ytat ### D
-    ### for irf
-    sol_yt1xt <- sol_ytxt %*% sol_xt1xt ### A %*% C
-    sol_yt1at <- sol_ytxt %*% sol_xt1at + rho * sol_ytat ### B %*% rho + D
-    ### irf block
-    sol_t1t <- cbind(rbind(sol_xt1xt, sol_yt1xt), matrix(0, nrow =n+m, ncol = m))
+  
+  if(n > 0) {
+    FF_11 <- F_matrix[1:n, 1:n, drop=FALSE]
+    FF_12 <- F_matrix[1:n, (n+1):(n+m), drop=FALSE]
+    G_1   <- G_matrix[1:n, , drop=FALSE]
+
+    sol_ytxt  <- - Hinv_22_inv %*% Hinv_21          # Decision Rule A
+    sol_ytat  <- Hinv_22_inv %*% Omega             # Decision Rule B
+    sol_xt1xt <- FF_11 + FF_12 %*% sol_ytxt        # Transition C
+    sol_xt1at <- G_1 + FF_12 %*% sol_ytat         # Transition D
+    
+    # Dynamics for IRFs
+    sol_yt1xt <- sol_ytxt %*% sol_xt1xt
+    sol_yt1at <- sol_ytxt %*% sol_xt1at + (matrix(rho_vec, m, k, byrow=TRUE) * sol_ytat)
+    
+    # Assembly with names
+    sol_t1t <- cbind(rbind(sol_xt1xt, sol_yt1xt), matrix(0, n+m, m))
     sol_t1a <- rbind(sol_xt1at, sol_yt1at)
-    sol_ta <- rbind(matrix(0, nrow = n, ncol = k), sol_ytat)
-    dimnames(sol_t1t) <- list(rownames(F_matrix), colnames(F_matrix))
-    dimnames(sol_t1a) <- dimnames(sol_ta) <- list(rownames(F_matrix), rep("shock", k))
-  } else{
-    sol_ytat <- - Hinv_22_inv %*% Lambda %*% Gamma_2
-    sol_ytxt <- sol_xt1xt <- sol_xt1at <- NULL
-    sol_yt1xt <- sol_yt1at <- NULL
-    sol_t1t <- sol_t1a <- sol_ta <- NULL
+    sol_tt  <- sol_ytxt
+    sol_ta  <- rbind(matrix(0, n, k), sol_ytat)
+    
+    # Restore names
+    dimnames(sol_ytxt)  <- list(y_names, x_names)
+    dimnames(sol_ytat)  <- list(y_names, shk_names)
+    dimnames(sol_xt1xt) <- list(x_names, x_names)
+    dimnames(sol_xt1at) <- list(x_names, shk_names)
+    dimnames(sol_t1t)   <- list(vars_nm, vars_nm)
+    dimnames(sol_t1a)   <- list(vars_nm, shk_names)
+    dimnames(sol_tt)    <- list(y_names, x_names)
+    dimnames(sol_ta)    <- list(vars_nm, shk_names)
+    
+  } else {
+    # n = 0 case: only non-predetermined variables exist
+    sol_ytat <- Hinv_22_inv %*% Omega
+    dimnames(sol_ytat) <- list(y_names, shk_names)
+    sol_ta   <- sol_ytat
+    dimnames(sol_ta) <- list(y_names, shk_names)
   }
   
-  # Return the results in a named list for clarity.
-  result <- list(
-    # setup
-    m = m, n = n, k = k,
-    rho = rho,
-    FF = F_matrix, FF_11 = FF_11, FF_12 = FF_12, FF_21 = FF_21, FF_22 = FF_22, 
-    G = G_matrix, G_1 = G_1, G_2 = G_2,
-    # transformation
-    H = H,
-    Hinv = Hinv, Hinv_11 = Hinv_11, Hinv_12 = Hinv_12,  Hinv_21 = Hinv_21, Hinv_22 = Hinv_22, 
-    J = J, J_1 = J_1, J_2 = J_2,
-    Gamma = Gamma, Gamma_1 = Gamma_1, Gamma_2 = Gamma_2, 
-    # solution
-    Lambda = Lambda,
+  # --- 6. Recover Redundant Variables (q > 0) ---
+  if(q > 0) {
+    if(n > 0) {
+      Psi_x <- Psi[, 1:n, drop=FALSE]
+      Psi_y <- Psi[, (n+1):(n+m), drop=FALSE]
+      
+      sol_qtxt  <- Psi_x + Psi_y %*% sol_ytxt
+      sol_qtat  <- Psi_y %*% sol_ytat
+      sol_qt1xt <- sol_qtxt %*% sol_xt1xt
+      sol_qt1at <- sol_qtxt %*% sol_xt1at + (matrix(rho_vec, q, k, byrow=TRUE) * sol_qtat)
+      
+      sol_t1t <- cbind(rbind(sol_xt1xt, sol_yt1xt, sol_qtxt %*% sol_xt1xt), matrix(0, n+m+q, m+q)) # Simplified for IRF
+      sol_tt  <- rbind(sol_ytxt, sol_qtxt)
+      sol_t1a <- rbind(sol_xt1at, sol_yt1at, sol_qt1at)
+      sol_ta  <- rbind(matrix(0, n, k), sol_ytat, sol_qtat)
+      
+      dimnames(sol_tt)  <- list(c(y_names, vars_q), x_names)
+      dimnames(sol_t1a) <- list(vars_all, shk_names)
+      dimnames(sol_ta)  <- list(vars_all, shk_names)
+      dimnames(sol_t1t) <- list(vars_all, vars_all)
+    } else {
+      sol_qtat <- Psi %*% sol_ytat
+      sol_ta   <- rbind(sol_ytat, sol_qtat)
+      dimnames(sol_ta) <- list(vars_all, shk_names)
+    }
+  }
+
+  # --- 7. Final Return List ---
+  return(list(
+    q = q, n = n, m = m, k = k, rho = rho,
+    A = A_matrix, B = B_matrix, 
+    FF = F_matrix, G = G_matrix,
+    H = H, Hinv = Hinv, J = diag(sorted_eigenvalues),
+    Gamma = Gamma, Omega = Omega, # Lambda renamed to Omega
     sol_ytxt = sol_ytxt, sol_ytat = sol_ytat, sol_xt1xt = sol_xt1xt, sol_xt1at = sol_xt1at,
     sol_yt1xt = sol_yt1xt, sol_yt1at = sol_yt1at,
-    sol_t1t = sol_t1t,
-    sol_t1a = sol_t1a,
-    sol_ta = sol_ta
-  )
-  return(result)
+    sol_t1t = sol_t1t, sol_t1a = sol_t1a, sol_ta = sol_ta, sol_tt = sol_tt
+  ))
 }
 ```
 
-```{r SET bk function}
-my_blanchard_kahn <- function(A_matrix, B_matrix, E_matrix = NULL, rho = 0) {
+
+```{r SET bk function old}
+my_blanchard_kahn_old <- function(A_matrix, B_matrix, E_matrix = NULL, rho = 0) {
   # Mukoyama macro pp 281
   #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
   # y{t+1} = F*y{t}+G
@@ -504,7 +598,8 @@ my_blanchard_kahn <- function(A_matrix, B_matrix, E_matrix = NULL, rho = 0) {
   
   my_ifelse <- function(test, yes, no){if(test){return(yes)}else{return(no)}}
   ### stop
-  if ((dim(A)[[1]] != dim(A)[[2]])|(dim(B)[[1]] != dim(B)[[2]])|(dim(A)[[1]] != dim(B)[[1]]) ){stop("Matrix A and B have to be the square matrices with the same dimensions.")}
+  if ((dim(A)[[1]] != dim(A)[[2]])|(dim(B)[[1]] != dim(B)[[2]])|(dim(A)[[1]] != dim(B)[[1]]) ){stop("Matrix A and B must be the square matrices with the same dimensions.")}
+  
   if(is.null(colnames(A_matrix))){stop("A matrix has to have the variable names on each column.")}
 
   ### fill optional E_matrix
@@ -2579,6 +2674,88 @@ irf_h$irf %>%
   geom_line(mapping = aes(x = t, y = value, color = Variable)) +
   geom_point(mapping = aes(x = t, y = value, color = Variable))
 ```
+
+### (g). NK Gertler (TBA: last update: 26/2/11)
+
+The following steps summarize the algebraic derivation of the impulse responses for the output gap ($\tilde{y}_t$) and inflation ($\pi_t$) in a basic New Keynesian model without endogenous state variables ($n=0$).
+
+**Step 1. System Representation**
+
+The structural equations (IS curve, NKPC, and Taylor Rule) are organized into the following matrix form:
+$$B \mathbb{E}_t \mathbf{z}_{t+1} = A \mathbf{z}_t + E \mathbf{a}_t$$
+where $\mathbf{z}_t = [\tilde{y}_t, \pi_t]^\top$ and $\mathbf{a}_t = [v_t, r_{t+1}^*]^\top$. The parameter matrices are defined as:
+$$B = \begin{bmatrix} 1 & \sigma \\ 0 & \beta \end{bmatrix}, \quad A = \begin{bmatrix} 1 + \sigma \phi_y & \sigma \phi_\pi \\ -\lambda & 1 \end{bmatrix}, \quad E = \begin{bmatrix} \sigma & -\sigma \\ 0 & 0 \end{bmatrix}$$
+
+**Step 2. Conversion to Canonical Form**
+
+By multiplying by $B^{-1}$, we obtain the system in the form $\mathbb{E}_t \mathbf{z}_{t+1} = F \mathbf{z}_t + G \mathbf{a}_t$:
+$$B^{-1} = \begin{bmatrix} 1 & -\sigma/\beta \\ 0 & 1/\beta \end{bmatrix}$$
+$$F = B^{-1}A = \begin{bmatrix} (1 + \sigma \phi_y) + \frac{\sigma \lambda}{\beta} & \sigma (\phi_\pi - \frac{1}{\beta}) \\[1em] -\frac{\lambda}{\beta} & \frac{1}{\beta} \end{bmatrix}, \quad G = B^{-1}E = \begin{bmatrix} \sigma & -\sigma \\ 0 & 0 \end{bmatrix}$$
+
+**Step 3. Solving the Non-predetermined Block**
+
+Since there are no predetermined variables ($n=0$), a unique stable solution exists if all eigenvalues of $F$ lie outside the unit circle (the Taylor Principle). Under this condition, the solution is given by:
+$$\mathbf{z}_t = - (F - \rho I)^{-1} G \mathbf{a}_t$$
+Let $D = F - \rho I$. Its determinant is:
+$$\det(D) = \frac{1}{\beta} \left[ (1 - \beta \rho_v)(1 + \sigma \phi_y - \rho_v) + \sigma \lambda (\phi_\pi - \rho_v) \right]$$
+
+**Step 4. Explicit Impulse Responses (Impact Period)**
+
+For a monetary policy shock $\epsilon_0^v = 1$ (where $\mathbf{a}_0 = [1, 0]^\top$), the initial impacts are:
+
+**Output Gap Impact:**
+
+$$\tilde{y}_0 = - \frac{\sigma(1 - \beta \rho_v)}{(1 - \beta \rho_v)(1 + \sigma \phi_y - \rho_v) + \sigma \lambda (\phi_\pi - \rho_v)}$$
+
+**Inflation Impact:**
+
+$$\pi_0 = - \frac{\sigma \lambda}{(1 - \beta \rho_v)(1 + \sigma \phi_y - \rho_v) + \sigma \lambda (\phi_\pi - \rho_v)}$$
+
+**Step 5. Economic Verification**
+
+The ratio of the responses satisfies the New Keynesian Phillips Curve relationship:
+$$\frac{\pi_0}{\tilde{y}_0} = \frac{\lambda}{1 - \beta \rho_v}$$
+This confirms that inflation is determined by the discounted sum of current and future output gaps. The presence of the term $(\phi_\pi - \rho_v)$ in the denominator demonstrates how a stronger policy response $\phi_\pi$ stabilizes the economy by reducing the magnitude of the impact.
+
+```{r}
+# Persistence of exogenous shocks
+rho_v <- 0.5  # Monetary policy shock persistence
+rho_r <- 0.9  # Natural rate shock persistence
+rho_vec <- c(rho_v, rho_r) # Vector of persistences
+```
+
+```{r}
+# Variables: ygap, pi
+endo_names <- c("ygap", "pi")
+shk_names <- c("v", "rn")
+
+# B matrix: Coefficients for E_t[z_{t+1}]
+B_endo <- matrix(c(1, sigma, 
+                   0, beta), nrow = 2, byrow = TRUE)
+
+# A matrix: Coefficients for z_t
+A_endo <- matrix(c(1 + sigma * phi_y, sigma * phi_pi, 
+                   -lambda_val,       1), nrow = 2, byrow = TRUE)
+
+# E matrix: Impact of exogenous shocks on the system
+E_shk <- matrix(c(sigma, -sigma, 
+                  0,      0), nrow = 2, byrow = TRUE)
+
+dimnames(B_endo) <- dimnames(A_endo) <- list(endo_names, endo_names)
+colnames(E_shk) <- shk_names
+```
+
+```{r}
+bk_2var <- my_blanchard_kahn(A_matrix = A_endo, 
+                             B_matrix = B_endo, 
+                             E_matrix = E_shk, 
+                             rho = rho_vec) # Passing rho as a vector
+```
+
+```{r}
+my_bk_irf(bk_2var)
+```
+
 
 ## 4. Medium-scale DSGE Model
 
