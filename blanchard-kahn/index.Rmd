@@ -2719,6 +2719,11 @@ This confirms that inflation is determined by the discounted sum of current and 
 
 ```{r}
 # Persistence of exogenous shocks
+gamma <- 1 / sigma
+phi_scr <- phi
+
+kappa_val <- (gamma - 1) + (phi_scr + 1) / (1 - alpha)
+lambda_val <- ((1 - theta) * (1 - beta * theta) / theta) * kappa_val
 rho_v <- 0.5  # Monetary policy shock persistence
 rho_r <- 0.9  # Natural rate shock persistence
 rho_vec <- c(rho_v, rho_r) # Vector of persistences
