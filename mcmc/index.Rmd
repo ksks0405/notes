@@ -1,0 +1,537 @@
+---
+title: "MCMC"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: show
+---
+
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+- This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+- This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title = TRUE,
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = FALSE,
+  warning = FALSE,
+  class.source = 'fold-hide'
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+- This chunk **loads the required packages** and **my functions**.
+
+```{r SET packages, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse", #must-have
+  "purrr"
+)
+easypackages::libraries(pkgList)
+rm(pkgList)
+```
+
+- This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+# 準備：マルコフ連鎖
+
+マルコフ連鎖の条件（chap. 3）
+
+$n$個の変数$\{x\}=x_1, x_2, \dots, x_n$を用いて確率$P(\{x\})$を与える
+
+$\{x\}^{(k)}$から$\{x\}^{(k+1)}$が得られる確率「遷移確率」を、$T(\{x\}^{(k)} \rightarrow \{x\}^{(k+1)})$とかく。この時、以下の4つが満たされていること。
+
+(i) マルコフ性
+
+$T(\{x\}^{(k)} \rightarrow \{x\}^{(k+1)})$が、それ以前の履歴（$\{x^{(1)}\}, \{x^{(2)}\}, \dots \{x^{(k-1)}\})$に依存しない…明らか
+
+(ii) 既約性
+
+あらゆる変数の組は、有限回のステップで移りあうことが可能→明らか
+
+(iii) 非周期性
+
+ステップ数 $n_s$ で$\{x\}$から$\{x'\}$に戻ってこれ、その最大公約数が$1$→明らか
+
+(iv) 詳細釣り合い条件
+
+$P(\{x\}) \cdot T(\{x\} \rightarrow \{x'\})=P(\{x'\}) \cdot T(\{x'\} \rightarrow \{x\})$
+
+# メトロポリス法
+
+$$
+P(x) = \frac{e^{-S(x)}}{Z} \qquad \text{(4.1)}
+$$
+
+e.g. ガウス積分：
+
+$$
+P(x) = \frac{e^{\frac{x^2}{2}}}{\sqrt{2\pi}}
+$$
+
+メトロポリス法　アルゴリズム
+
+1. $\Delta x$をランダムに選び、$x' = x^{(k)} + \Delta x$を$x^{(k+1)}$の候補とする。
+
+2. 一様乱数 $r \in (0,1)$を発生させる。
+
+3. $e^{S(x^{(k)})-S(x')}>r$、i.e. 候補$x'$の方が現行の$x^{(k)}$より"ある程度"望ましければ、提案を受理して $x^{(k+1)}=x'$とする。さもなくば、提案を棄却して$x^{(k+1)}=x^{(k)}$とする。
+
+なぜこの連鎖が詳細釣り合い条件を満たす？
+
+$$ 
+\begin{aligned}
+T(x \rightarrow x') &= \frac{1}{2c} \times \min (1, e^{S(x)-S(x')}),\\
+T(x' \rightarrow x) &= \frac{1}{2c} \times \min (1, e^{S(x')-S(x)})
+\end{aligned}
+$$
+
+$S(x)-S(x')>0$のとき、
+$$
+\begin{aligned}
+ P(x) \cdot T(x \rightarrow x') &= \frac{e^{-S(x)}}{Z} \times \frac{1}{2c}\times 1\\
+P(x') \cdot T(x' \rightarrow x) &= \frac{e^{-S(x')}}{Z} \times \frac{1}{2c}\times e^{S(x')-S(x)} = \frac{e^{-S(x)}}{Z} \times \frac{1}{2c}\times 1
+\end{aligned}
+$$
+$S(x)-S(x')<0$のときも同様。
+
+## 数値例
+
+$S(x) = e^\frac{x^2}{2}$、すなわち$P(x) = \frac{e^{\frac{x^2}{2}}}{\sqrt{2\pi}}$のケースについて考える。
+
+```{r, class.source='fold-show'}
+Sfun <- function(x){x^2/2}
+```
+
+初期値を$x_0=0$、stepを$\Delta x \sim U(-1,1)$ としたときのアルゴリズムは以下の通り。
+
+```{r, class.source='fold-show'}
+x_0 <- 0
+step <- 1
+n_smpl <- 10000
+
+x_smpl <- numeric(n_smpl)
+acc_smpl <- logical(n_smpl)
+
+for (i in c(1:n_smpl)){
+  ### current x ###
+  if(i == 1){
+    x_current <- x_0
+  } else{
+    x_current <- x_smpl[[i-1]]
+  }
+  ### proposed x ###
+  x_prime <- x_current + runif(1, min = -step, max = step)
+  
+  ### probability ###
+  prob <- min(1, exp(Sfun(x_current)-Sfun(x_prime)))
+  
+  ### accept or reject ###
+  if(prob > runif(1, min = 0, max = 1)){
+    x_smpl[[i]] <- x_prime
+    acc_smpl[[i]] <- TRUE
+  } else{
+    x_smpl[[i]] <- x_current
+    acc_smpl[[i]] <- FALSE
+  }
+}
+```
+
+```{r}
+hist(x_smpl)
+ts.plot(x_smpl)
+```
+
+### 異なる設定
+
+`run_metropolis` を定義して、複数の設定で走らせる。
+
+- **baseline**: $x_0 = 0$、$\Delta x \sim \text{U}(-1,1)$
+
+- **narrow**  : $x_0 = 0$、$\Delta x \sim \text{U}(-50,50)$
+
+- **wide**    : $x_0 = 0$、$\Delta x \sim \text{U}(-0.3,0.3)$
+
+- **far**     : $x_0 = 10$,
+
+```{r}
+run_metropolis <- function(
+  n_smpl,
+  x_0 = 0,
+  fun_proposal = function() runif(1, min = -1, max = 1)
+){
+  # safety checks
+  if (!is.numeric(n_smpl) || length(n_smpl) != 1 || n_smpl < 1) {stop("n_smpl must be a positive scalar.")}
+  n_smpl <- as.integer(n_smpl)
+  if (!exists("Sfun", mode = "function", inherits = TRUE)) {stop("Sfun is not found. ")
+  }
+
+  # storage
+  x_smpl <- numeric(n_smpl)
+  acc <- logical(n_smpl)  # acceptance for each proposed move (length n_smpl)
+
+  # Metropolis random-walk (proposal increment = fun_proposal())
+  for (i in 1:n_smpl) {
+    # current x
+    if(i == 1){
+      x_current <- x_0  
+    }else{
+      x_current <- x_smpl[i-1]
+    }
+    
+    # proposed x
+    x_prime   <- x_current + fun_proposal()
+    
+    # probability
+    prob <- min(1, exp(Sfun(x_current) - Sfun(x_prime)))
+    
+    # accept or reject
+    if (prob > runif(1, 0, 1)) {
+      x_smpl[i] <- x_prime
+      acc[i] <- TRUE
+    } else {
+      x_smpl[i] <- x_current
+      acc[i] <- FALSE
+    }
+  }
+
+  list(
+    x = x_smpl,                      # length n_smpl
+    accept = acc,                    # length n_smpl
+    accept_rate = mean(acc)
+  )
+}
+```
+
+```{r, class.source='fold-show'}
+smpl_base <- list(x = x_smpl, accept = acc_smpl)
+smpl_wide <- run_metropolis(n_smpl, x_0 = x_0, fun_proposal = function() runif(1, min = -50, max = 50))
+smpl_narrow <- run_metropolis(n_smpl, x_0 = x_0, fun_proposal = function() runif(1, min = -0.3, max = 0.3))
+smpl_far <- run_metropolis(n_smpl, x_0 = 10)
+```
+
+```{r}
+chains <- list(
+  baseline = smpl_base,
+  wide     = smpl_wide,
+  narrow   = smpl_narrow,
+  far      = smpl_far
+)
+
+df_long <- imap_dfr(
+  chains,
+  ~ tibble(
+      t = 1:length(.x$x),
+      chain = .y,
+      x = .x$x,
+      accept = .x$accept
+    )
+)
+
+df_long <- df_long %>%
+  group_by(chain) %>%
+  mutate(
+    cummean = cummean(x),
+    cumacc  = cumsum(accept) / t
+  ) %>%
+  ungroup()
+```
+
+**Trace plot**
+
+- narrow は1回の移動距離が小さく、wideは同じ値が繰り返される
+  →異なるメカニズムで**自己相関が高くなる**
+
+- 初期値の影響は早々に消え去る
+
+```{r}
+df_long %>%
+  ggplot(aes(x = t, y = x, color = chain)) +
+  geom_line() +
+  labs(title = "Trace plot", x = "t", y = "x", color = NULL)
+
+# trace plot (first 500 obs)
+df_long %>%
+  filter(t<=500) %>% 
+  ggplot(aes(x = t, y = x, color = chain)) +
+  geom_line() +
+  labs(title = "Trace plot (first 500 obs)", x = "t", y = "x", color = NULL)
+
+# trace plot (last 500 obs)
+df_long %>%
+  filter(t>n_smpl-500) %>% 
+  ggplot(aes(x = t, y = x, color = chain)) +
+  geom_line() +
+  labs(title = "Trace plot (last 500 obs)", x = "t", y = "x", color = NULL)
+```
+
+**acceptance ratio**
+
+narrowは極端に高く、wideは低い。baseline、farはその中間（やや高め）
+
+```{r}
+# cum acceptance
+df_long %>%
+  ggplot(aes(x = t, y = cumacc, color = chain)) +
+  geom_line() +
+  labs(title = "Cumulative acceptance ratio", x = "t", y = "cum acceptance", color = NULL)
+```
+
+**累積平均・分布**
+
+- 累積平均は、narrow、wideで時間がかかりつつも、10000サンプルでは概ね0に収束
+
+- 分布も、narrow、wideは形が変
+
+```{r}
+# cummean
+df_long %>%
+  ggplot(aes(x = t, y = cummean, color = chain)) +
+  geom_line() +
+  labs(title = "Cumulative mean", x = "t", y = "cummean", color = NULL)
+
+# cummean
+df_long %>%
+  filter(t>n_smpl-5000) %>% 
+  ggplot(aes(x = x, color = chain, fill = chain)) +
+  geom_density(alpha = 0.2) +
+  labs(title = "Empirical distribution (last 5000 draws)", x = "x", y = "density", color = NULL, fill = NULL)
+```
+
+## 統計量（未整理）
+
+Gelman-Rubin, ESS, ACF ?
+
+```{r}
+n_rep <- 100
+n_smpl_each <- 1000
+lag_max <- 100
+base_seed <- 1111
+
+# 4つのチェーン設定を「定義のリスト」として持つ
+chain_specs <- list(
+  baseline = list(x_0 = 0, fun_proposal = function() runif(1, -1,  1)),
+  wide     = list(x_0 = 0, fun_proposal = function() runif(1, -50, 50)),
+  narrow   = list(x_0 = 0, fun_proposal = function() runif(1, -0.3, 0.3)),
+  far      = list(x_0 = 10, fun_proposal = function() runif(1, -1,  1)))
+
+# 1) 100回×4設定 を回して、x を縦持ちで集約
+df_x <- map_dfr(1:n_rep, function(r) {
+  set.seed(base_seed + r)
+
+  imap_dfr(chain_specs, function(sp, chain_name) {
+    smpl <- run_metropolis(
+      n_smpl = n_smpl_each,
+      x_0 = sp$x_0,
+      fun_proposal = sp$fun_proposal
+    )
+
+    tibble(
+      run = r,
+      chain = chain_name,
+      t = 1:length(smpl$x),
+      x = smpl$x
+    )
+  })
+})
+```
+
+
+```{r, eval = F}
+# ACF を tibble で返すヘルパー（lag=0..lag_max）
+calc_acf_tbl <- function(x, lag_max = 100) {
+  a <- stats::acf(x, lag.max = lag_max, plot = FALSE)
+  tibble(
+    lag = 0:lag_max,
+    acf = as.numeric(a$acf)
+  )
+}
+# 2) (run, chain) ごとに ACF(0..100) を計算して縦持ちにする
+df_acf <- df_x %>%
+  group_by(run, chain) %>%
+  summarise(acf_tbl = list(calc_acf_tbl(x, lag_max = lag_max)), .groups = "drop") %>%
+  unnest(acf_tbl)
+
+
+# 3) run 間で集計（平均 + 5-95%区間）: 任意
+df_acf_sum <- df_acf %>%
+  group_by(chain, lag) %>%
+  summarise(
+    acf_mean = mean(acf),
+    acf_p05  = quantile(acf, 0.05),
+    acf_p95  = quantile(acf, 0.95),
+    .groups = "drop"
+  )
+
+# 4) プロット：平均 + (5%,95%) リボン（同一図に重ね描き）
+df_acf_sum %>%
+  filter(lag >= 1) %>%   # lag=0 を除きたいなら
+  ggplot(aes(x = lag, color = chain, fill = chain)) +
+  geom_ribbon(aes(ymin = acf_p05, ymax = acf_p95), alpha = 0.15, color = NA) +
+  geom_line(aes(y = acf_mean)) +
+  labs(title = "ACF up to lag 100 (100 runs, n=1000 each)",
+       x = "lag", y = "ACF", color = NULL, fill = NULL)
+
+```
+
+```{r}
+ess_geyer_ips <- function(x, lag_max = 2000) {
+  x <- as.numeric(x)
+  N <- length(x)
+  if (N < 3) stop("Need at least 3 draws.")
+
+  a <- stats::acf(x, lag.max = min(lag_max, N - 1), plot = FALSE)
+  rho <- as.numeric(a$acf)[-1]  # drop lag 0
+
+  M <- floor(length(rho) / 2)
+  if (M == 0) return(list(ESS = N, tau = 1))
+
+  gamma <- rho[2*(1:M) - 1] + rho[2*(1:M)]
+  m_stop <- which(gamma <= 0)[1]
+  if (!is.na(m_stop)) gamma <- gamma[1:(m_stop - 1)]
+
+  tau <- 1 + 2 * sum(gamma, na.rm = TRUE)
+  tau <- max(tau, 1)
+  list(ESS = N / tau, tau = tau)
+}
+
+df_ess <- df_x %>%
+  group_by(run, chain) %>%
+  summarise(
+    N = n(),
+    tau = ess_geyer_ips(x, lag_max = 500)$tau,
+    ESS = ess_geyer_ips(x, lag_max = 500)$ESS,
+    .groups = "drop"
+  )
+
+# run間の集計（平均と区間）
+df_ess_sum <- df_ess %>%
+  group_by(chain) %>%
+  summarise(
+    ESS_mean = mean(ESS),
+    ESS_p05  = quantile(ESS, 0.05),
+    ESS_p95  = quantile(ESS, 0.95),
+    tau_mean = mean(tau),
+    .groups = "drop"
+  )
+```
+
+baseline、far （初期値のみ異なる）は、ESSは大体同じ。wideは
+
+```{r}
+df_ess_sum
+```
+
+```{r}
+# Gelman-Rubin R-hat (PSRF) for scalar x
+rhat_psrf <- function(draws_mat, split = TRUE) {
+  # draws_mat: matrix (iter x chain)
+  stopifnot(is.matrix(draws_mat))
+  if (split) {
+    n <- nrow(draws_mat)
+    if (n %% 2 != 0) draws_mat <- draws_mat[-n, , drop = FALSE]  # 奇数なら最後を落とす
+    n <- nrow(draws_mat)
+    half <- n / 2
+    # split chains: (iter/2) x (2*chain)
+    draws_mat <- cbind(draws_mat[1:half, , drop = FALSE],
+                       draws_mat[(half+1):n, , drop = FALSE])
+  }
+
+  n <- nrow(draws_mat)  # iterations per chain
+  m <- ncol(draws_mat)  # number of chains
+  if (n < 2 || m < 2) stop("Need at least 2 iterations and 2 chains for R-hat.")
+
+  chain_means <- colMeans(draws_mat)
+  chain_vars  <- apply(draws_mat, 2, var)
+
+  W <- mean(chain_vars)
+  B <- n * var(chain_means)  # between-chain variance * n
+
+  var_plus <- (n - 1) / n * W + (1 / n) * B
+  Rhat <- sqrt(var_plus / W)
+
+  # 数値安定性（W=0など）への保険
+  if (!is.finite(Rhat)) Rhat <- NA_real_
+  Rhat
+}
+
+# Run multiple chains per setting (baseline/wide/narrow)
+run_multi_chains <- function(n_iter, inits, fun_proposal, warmup = 0, seed0 = 1111) {
+  # returns: matrix (post-warmup iter x n_chain)
+  stopifnot(warmup < n_iter)
+  n_chain <- length(inits)
+  n_keep  <- n_iter - warmup
+
+  draws_mat <- matrix(NA_real_, nrow = n_keep, ncol = n_chain)
+  colnames(draws_mat) <- paste0("chain", seq_len(n_chain))
+
+  for (j in seq_len(n_chain)) {
+    set.seed(seed0 + j)
+    smpl <- run_metropolis(
+      n_smpl = n_iter,
+      x_0 = inits[j],
+      fun_proposal = fun_proposal
+    )
+    draws_mat[, j] <- smpl$x[(warmup + 1):n_iter]
+  }
+  draws_mat
+}
+
+# Settings: 3-4 chains with dispersed initials
+n_iter  <- 1000
+warmup  <- 500
+inits   <- c(-10, 0, 10, 20)  # 3本なら c(-10, 0, 10) などに
+
+specs_gr <- list(
+  baseline = function() runif(1, -1,  1),
+  wide     = function() runif(1, -50,  50),
+  narrow   = function() runif(1, -0.3, 0.3)
+)
+
+# Run + compute R-hat per setting
+res_gr <- imap(specs_gr, function(fp, nm) {
+  draws <- run_multi_chains(
+    n_iter = n_iter,
+    inits = inits,
+    fun_proposal = fp,
+    warmup = warmup,
+    seed0 = 1111 + 1000 * match(nm, names(specs_gr))
+  )
+
+  tibble(
+    setting = nm,
+    n_chain = length(inits),
+    n_iter = n_iter,
+    warmup = warmup,
+    Rhat_split = rhat_psrf(draws, split = TRUE),
+    Rhat_nosplit = rhat_psrf(draws, split = FALSE)
+  )
+})
+
+df_rhat <- bind_rows(res_gr)
+```
+
+```{r}
+df_rhat
+```
+

@@ -1,0 +1,639 @@
+---
+title: "Dynamic Panel"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: show
+  github_document:
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+# Motivation
+
+
+# Settings
+
+The chapter contains some chunks that conduct document settings.
+
+-   This chunk **removes all the variables** in the environment.
+
+```{r SET housekeeping, class.source='fold-hide'}
+rm(list = ls(all = TRUE))
+```
+
+-   This chunk **sets** `knitr` **options**.
+
+```{r SET knit options, class.source='fold-hide'}
+knitr::opts_chunk$set(
+  block.title=T, # default: F / normally F
+  fig.align = "center",
+  results = "hold",
+  fig.show = "hold",
+  message = F, # when hiding messages
+  warning = F  # when hiding errors
+)
+knitr::opts_hooks$set(label = function(options) {
+  options$before = paste0('<div>Chunk: ', options$label, '</div>')
+  return(options)
+})
+```
+
+-   This chunk **loads the required packages** and **my functions**.
+
+```{r SET libraries, class.source='fold-hide'}
+pkgList <- c(
+  "tidyverse", #must-have
+  "ggplots", # read xlsx
+  "plm",
+  "modelsummary",
+  "gridExtra",
+  "plm",
+  "pgmm"
+)
+
+easypackages::libraries(pkgList)
+
+rm(pkgList)
+```
+
+-   This chunk sets **the seed**.
+
+```{r SET seeds, class.source='fold-hide'}
+set.seed(1111)
+```
+
+# データ
+
+
+```{r FUN simulation fun, class.source='fold-hide'}
+simulate_dynamic_panel <- function(
+    N = 5000,
+    T = 8,
+    delta = 0.7, 
+    beta = 1.0,
+    sigma_mu = 1.0, 
+    sigma_u = 1.0,
+    x_type = c("none", "exogenous", "endogenous"),
+    endog_strength = 0.5) {
+
+  x_type <- match.arg(x_type)
+  
+  # Individual fixed effects (c_i)
+  mu <- rnorm(N, 0, sigma_mu)
+  
+  # Idiosyncratic shocks (\varepsilon_it)
+  u <- matrix(rnorm(N * T, 0, sigma_u), N, T)
+  
+  # Regressor x_it (optional)
+  if (x_type == "endogenous") {
+    v <- matrix(rnorm(N * T), N, T)
+    x <- v + endog_strength * u
+  } else if (x_type == "exogenous") {
+    x <- matrix(rnorm(N * T), N, T)
+  } else {  # none or else
+    x <- NULL
+  }
+  
+  # Outcome y_it
+  y <- matrix(0, N, T)
+  
+  # initial condition (roughly stationary)
+  y[, 1] <- mu + u[, 1] / sqrt(pmax(1e-8, 1 - delta^2))
+  
+  for (tt in 2:T) {
+    if (x_type == "none") {
+      y[, tt] <- delta * y[, tt - 1] + mu + u[, tt]
+    } else {
+      y[, tt] <- delta * y[, tt - 1] + beta * x[, tt] + mu + u[, tt]
+    }
+  }
+  
+  # Long-format data.frame
+  df <- data.frame(
+    id = rep(seq_len(N), each = T),
+    t  = rep(seq_len(T), times = N),
+    y  = as.vector(t(y)),
+    mu = rep(mu, each = T),
+    u  = as.vector(t(u))
+  )
+  
+  # x is included only if it exists
+  if (!is.null(x)) {
+    df$x <- as.vector(t(x))
+  }
+  
+  # other derived quantities
+  df$y_l1 <- ave(df$y, df$id, FUN = function(z) c(NA, z[-length(z)]))
+  df$eps  <- df$mu + df$u
+  
+  df
+}
+```
+
+`simulate_dynamic_panel`関数を使ってデータセットを作成。
+
+- 各idは同一の$\delta$のAR(1)に従う。
+
+- id固有の切片のため、平均的な水準が異なる。
+
+```{r IMP simulation data}
+delta_true <- 0.8
+data_small <- simulate_dynamic_panel(delta = delta_true, N = 10, T = 5, x_type = "none")
+data_big <- simulate_dynamic_panel(delta = delta_true, N = 1000, T = 5, x_type = "none")
+```
+
+$T$が短いため違いが分かりづらいが、各idで平均的な水準が異なるAR(1)に従う。
+
+```{r EXP example, class.source='fold-hide'}
+data_small %>% 
+  filter(id <= 5) %>% 
+  ggplot(aes(x = t, color = factor(id))) +
+  geom_line(aes(y = y)) +
+  geom_line(aes(y = mu / (1 - 0.7)), linetype = "dashed") +
+  labs(
+    title = "Simulated Data",
+    subtitle = expression(
+      y[it] == delta * y[i,t-1] + mu[i] + u[it] ~ ",  " ~ delta == delta_true
+    ),
+    x = "Time (t)",
+    y = expression(y[it]),
+    color = "Individual (i)",
+    caption = "Dashed lines: stationary means: c_i / (1 - delta)"
+  )
+```
+
+# within変換によるバイアス
+
+DGPは以下のように表される：
+
+$$
+y_{it} = \delta y_{i,t-1} + c_i + \varepsilon_{it} \quad \text{(Greene p.436)}.
+$$
+\* Chap. 11.8.4。Chap. 11.8.3 （$(11-63)$式以降）でも同じ議論をしている。
+
+- $c_i$：個体固定効果（時間不変・観測不能）
+
+- $\varepsilon_{it}$：平均$0$のi.i.d.誤差項
+
+- $T$：固定（small $T$）
+
+- $N \rightarrow \infty$
+
+## within 変換によるバイアス
+
+固定効果$c_i$を除去するため、個体 $i$ごとの時間平均を引く：
+
+$$
+\tilde y_{it} = y_{it} - \bar y_i,
+\quad
+\bar y_i = \frac{1}{T}\sum_{t=1}^T y_{it},
+\quad
+\tilde \varepsilon_{it} = \varepsilon_{it} - \bar \varepsilon_i,
+\quad
+\bar \varepsilon_i = \frac{1}{T}\sum_{t=1}^T \varepsilon_{it}.
+$$
+
+このとき、
+
+$$
+\underbrace{ y_{i,t}-\bar y_i }_{\tilde y_{it}}
+= \delta (\underbrace{ y_{i,t-1} - \bar y_i }_{\tilde y_{i,t-1}}) + (\underbrace{ \varepsilon_{it} - \bar \varepsilon_i }_{\varepsilon_{i,t}}),
+$$
+
+
+(1) ラグ付き従属変数 $y_{i,t-1}$ は過去の誤差 $\varepsilon_{i,t-1}$ を含む：
+
+$$
+y_{i,t-1} = \delta y_{i,t-2} + c_i + \varepsilon_{i,t-1}.
+$$
+
+(2) within 後の誤差項 $\tilde \varepsilon_{it}$ は平均誤差 $\bar \varepsilon_i$ を含む。
+$\bar \varepsilon_i$ の中には $\varepsilon_{i,t-1}$ が重み $1/T$ で含まれる。
+
+したがって、within 変換後には機械的に
+
+$$
+\operatorname{Cov}(\tilde y_{i,t-1}, \tilde \varepsilon_{it}) \simeq  -\frac{\sigma_{\varepsilon}^2}{T^2}\frac{{(T-1)-T\delta+\delta^T}}{(1-\delta)^2}\neq 0　\quad \text{(Greene p. 437)}
+$$
+	
+が生じ、OLS の外生性条件が破れる。
+
+$T$ 固定のとき、within 推定量の漸近バイアスは
+
+$$
+\operatorname{Bias}(\hat\delta_{FE}) \approx -\frac{1+\delta}{T-1}.
+$$
+
+含意：
+
+- バイアスは $O(1/T)$
+
+- $N$ を増やしても消えない
+
+- $T$ を増やすと縮小する
+
+直観：
+
+- 自己回帰モデルでは、$y_t$は$\varepsilon_t$の累積和によって表現されるため、これらの平均は当然相関する（？）
+
+## バイアスの確認
+
+通常のOLSで回帰。$\delta$が真の値（`r delta_true`）よりも小さくなる。
+
+```{r REG fe regression}
+# 1) within(FE)回帰（単純AR: y ~ lag(y,1)）
+pdata_big <- pdata.frame(data_big, index = c("id", "t"))
+fe_model <- plm(y ~ lag(y, 1), data  = pdata_big, model = "within")
+msummary(fe_model)
+```
+
+## yhatとuhatの相関
+
+```{r, class.source='fold-hide'}
+# 2) 回帰に使われたデータ（NA落ち後）を取り出す
+mf <- model.frame(fe_model)  # y と lag(y,1) が入る（within変換前の形で取れる）
+y_it    <- model.response(mf)
+y_lag   <- mf[["lag(y, 1)"]]
+
+# 残差（within変換後の回帰の残差に対応）
+uhat <- resid(fe_model)
+
+# 3) “within変換後”の回帰子を自分で作る： y_{i,t-1} - mean_i(y_{i,t-1})
+#    ※mfには id が無いので、元データ側で lag を作ってから合わせるのが確実
+df_use <- data_big %>%
+  arrange(id, t) %>%
+  group_by(id) %>%
+  mutate(y_lag = lag(y, 1)) %>%
+  ungroup()
+
+# fe_modelが落とした観測（最初のtなど）に合わせて、同じ行だけ残す
+# plmのmodel.frameと同じ順序に合わせるため、pdataのindexを使うのが安全
+idx <- as.data.frame(index(fe_model))  # id, t
+idx$id <- as.integer(as.character(idx$id))
+idx$t  <- as.integer(as.character(idx$t))
+df_use2 <- df_use %>%
+  inner_join(idx, by = c("id", "t")) %>%
+  arrange(id, t)
+
+# within変換後の回帰子：tilde y_{i,t-1}
+df_use2 <- df_use2 %>%
+  group_by(id) %>%
+  mutate(y_lag_within = y_lag - mean(y_lag, na.rm = TRUE)) %>%
+  ungroup()
+
+# 残差を同じ順序で付与
+df_use2$uhat_within <- as.numeric(uhat)
+p_level <- ggplot(df_use2, aes(x = y_lag, y = u)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "y_{i,t-1} vs \varepsilon_{it}",
+    subtitle = "In the DGP, \varepsilon_it is independent of past y",
+    x = expression(y[i*","*t-1]),
+    y = expression(u[it])
+  )
+
+p_within <- ggplot(df_use2, aes(x = y_lag_within, y = uhat_within)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title = "yhat_{i,t-1} vs uhat_{it}",
+    subtitle = "Correlation between within-transformed lagged y and FE residual",
+    x = expression(tilde(y)[i*","*t-1]),
+    y = expression(hat(tilde(u))[it])
+  )
+
+grid.arrange(p_level, p_within, ncol = 2)
+```
+
+```{r REG ab package big}
+# Arellano–Bond difference GMM: Δy_it on Δy_{i,t-1}
+# instruments: y_{i,t-2}, y_{i,t-3}, ... in levels
+ab <- pgmm(
+  y ~ lag(y, 1) | lag(y, 2:99),   # 2:99 はTに応じて自動で切れる
+  data = pdata_big,
+  effect = "individual",
+  model = "onestep",
+  transformation = "d"
+)
+
+coef(ab)
+```
+
+# Arellano-Bond 推定量
+
+## アイデア
+
+Anderson and Hsiao  (1981, 1982) は、group meanではなくfirst differences に基づくアプローチを考案した：（Greene p. 437）
+
+$$ y_{i,t}-y_{i,t-1} = \delta (y_{i,t-1}-y_{i,t-2}) + \varepsilon_{i,t}-\varepsilon_{i,t-1}, \quad t = 3, \dots, T $$
+（$t=3$からスタートしているのは、1期ラグ＋階差）
+
+最初の観測（$t = 3$）についてみると、
+$$ y_{i,3}-y_{i,2} = \delta (y_{i,2}-y_{i,1}) + \varepsilon_{i,3}-\varepsilon_{i,2}, $$
+すなわち2期前のレベル $y_{i,1} \, \forall i$ が誤差項と相関しないため、操作変数として利用可能。
+次の観測（$t = 4$）についてみると、
+$$ y_{i,4}-y_{i,3} = \delta (y_{i,3}-y_{i,2}) + \varepsilon_{i,4}-\varepsilon_{i,3}, $$
+すなわち2期前のレベル $y_{i,2} \, \forall i$ に加え、2期前の差分$y_{i,2}-y_{i,1} \, \forall i$ と3期前のレベル$y_{i,1} \, \forall i$も利用可能になる。
+
+このように、$t$によって操作変数の数が異なることを許容するため、例えば$t=3$のときの被説明変数、説明変数、操作変数を、
+
+$$ 
+Z_{(3)} =\begin{pmatrix}y_{1,1} \\y_{2,1} \\\vdots \\y_{n,1}\end{pmatrix}, \quad
+\tilde{X}_{(3)} =\begin{pmatrix} y_{1,2}-y_{1,1} \\ y_{2,2}-y_{2,1} \\ \vdots \\ y_{n,2}-y_{n,1} \end{pmatrix} \quad 
+\tilde{y}_{(3)}  =\begin{pmatrix} y_{1,3}-y_{1,2} \\ y_{2,3}-y_{2,2} \\ \vdots \\ y_{n,3}-y_{n,2} \end{pmatrix} ,
+$$
+$$  $$
+
+このようにして構成した$T-2$個の操作変数推定量$\{\hat{\theta}_{IV(3)}, \hat{\theta}_{IV(4)},\dots ,\hat{\theta}_{IV(T)}\}$ のMDE推定量が考えられる。
+
+Arellan-Bond推定量は、代わりに以下のような推計行列を考える：
+
+$$
+\underbrace{y}_{N(T-2)\times1} =
+\begin{pmatrix}
+i=1\left\{ \begin{array}{l} \Delta y_{1,3} \\ \Delta y_{1,4} \\ \Delta y_{1,5} \end{array} \right. \\[1.2em]
+i=2\left\{ \begin{array}{l} \Delta y_{2,3} \\ \Delta y_{2,4} \\ \Delta y_{2,5} \end{array} \right. \\[1.2em]
+\vdots \\[1.2em]
+i=10\left\{ \begin{array}{l} \Delta y_{10,3} \\ \Delta y_{10,4} \\ \Delta y_{10,5} \end{array} \right. 
+\end{pmatrix},
+
+\underbrace{x}_{N(T-2)\times1} =
+\begin{pmatrix} \Delta y_{1,2} \\ \Delta y_{1,3} \\ \Delta y_{1,4} \\[1.2em]
+\Delta y_{2,2} \\ \Delta y_{2,3} \\ \Delta y_{2,4} \\[1.2em] \vdots \\[1.2em]
+\Delta y_{10,2} \\ \Delta y_{10,3} \\ \Delta y_{10,4} \end{pmatrix},
+
+\underbrace{Z}_{N(T-2)\times\sum_{t=1}^{T-2}t} = 
+\begin{pmatrix}
+y_{1,1} & 0       & 0       & 0       & 0       & 0 \\
+0       & y_{1,1} & y_{1,2} & 0       & 0       & 0 \\
+0       & 0       & 0       & y_{1,1} & y_{1,2} & y_{1,3} \\[1.2em]
+y_{2,1} & 0       & 0       & 0       & 0       & 0 \\
+0       & y_{2,1} & y_{2,2} & 0       & 0       & 0 \\
+0       & 0       & 0       & y_{2,1} & y_{2,2} & y_{2,3} \\[1.2em]
+\vdots  & \vdots  & \vdots  & \vdots  & \vdots  & \vdots  \\[1.2em]
+y_{10,1}& 0       & 0       & 0       & 0       & 0 \\
+0       & y_{10,1}& y_{10,2}& 0       & 0       & 0 \\
+0       & 0       & 0       & y_{10,1}& y_{10,2}& y_{10,3}
+\end{pmatrix}
+$$
+
+
+★ Arellano and Bond は、XX をウエイト行列とする MDE ？　Greene p442
+
+" Chat GPT: uncollapsed と collapsedの違いは、「同じモーメント条件を、方程式ごとに別々の列として持つか、ラグごとにまとめて1列に潰すか」という **Z 行列の作り方（列の持ち方）**の違いです。モデルも仮定も同じで、**違うのは“計数（次元）と有限標本挙動”**だけです。
+
+The one-step weight can be calculated as follows;
+
+
+```{r REG ab package small}
+pdata_small <- pdata.frame(data_small)
+ab_pkg_small <- pgmm(
+  y ~ lag(y, 1) | lag(y, 2:99),
+  data = pdata_small,
+  effect = "individual",
+  model = "onestep",
+  transformation = "d"
+)
+```
+
+
+```{r REG ab handroll}
+# 1) AB(diff GMM) の「pgmmと同じ」(y, X, Z) をデータから構築
+#    - Z; uncollapsed
+build_ab_mats_uncollapsed <- function(df) {
+  df <- df[order(df$id, df$t), ]
+  ids <- unique(df$id)
+  Tm  <- max(df$t)
+
+  stopifnot(all(df$t %in% 1:Tm))
+
+  Teq <- Tm - 2                    # 差分方程式の本（t=3..T）
+  L   <- Teq * (Teq + 1) / 2        # 1+...+Teq
+
+  y_stack <- numeric(0)
+  X_stack <- numeric(0)
+  Z_stack <- matrix(0, nrow = 0, ncol = L)
+
+  for (i in ids) {
+    y_i <- df$y[df$id == i]         # length Tm
+    # Δy_t = y_t - y_{t-1} (t=2..T)
+    dy <- diff(y_i)                 # length Tm-1
+    # AB diff eq uses t=3..T:
+    # dependent: Δy_t  (t=3..T)  -> dy[2..Tm-1] length Teq
+    # regressor: Δy_{t-1} (t=3..T) -> dy[1..Tm-2] length Teq
+    y_dep <- dy[2:(Tm-1)]
+    x_reg <- dy[1:(Tm-2)]
+
+    # Z_i: Teq x L (uncollapsed triangular)
+    Z_i <- matrix(0, nrow = Teq, ncol = L)
+
+    col_start <- 1
+    for (j in 1:Teq) {
+      # equation index j corresponds to time t = j+2
+      # valid level instruments: y_1,...,y_{t-2} = y_1,...,y_j
+      # place them in NEW columns (uncollapsed)
+      cols <- col_start:(col_start + j - 1)
+      Z_i[j, cols] <- y_i[1:j]
+      col_start <- col_start + j
+    }
+
+    # stack
+    y_stack <- c(y_stack, y_dep)
+    X_stack <- c(X_stack, x_reg)
+    Z_stack <- rbind(Z_stack, Z_i)
+  }
+
+  list(
+    y = matrix(y_stack, ncol = 1),
+    X = matrix(X_stack, ncol = 1),
+    Z = Z_stack,
+    Teq = Teq,
+    L = L
+  )
+}
+
+mats <- build_ab_mats_uncollapsed(data_small)
+
+# 2) one-step GMM 係数（手計算）
+X <- mats$X
+y <- mats$y
+Z <- mats$Z
+
+build_Omega_diff_iid <- function(N, m, sigma2 = 1) {
+  # Ω_i: m×m tridiagonal (2 on diag, -1 on off-diag)
+  Om_i <- diag(2, m, m)
+  if (m >= 2) {
+    Om_i[cbind(1:(m-1), 2:m)] <- -1
+    Om_i[cbind(2:m, 1:(m-1))] <- -1
+  }
+  Om_i <- sigma2 * Om_i
+
+  # Ω = I_N ⊗ Ω_i
+  Omega <- kronecker(diag(1, N), Om_i)
+  Omega
+}
+
+Omega <- build_Omega_diff_iid(10,3)
+
+my_W <- solve(t(Z) %*% Omega %*% Z)
+
+# 3) pgmm の one-step 重み行列を使う（あなたの出力では A1 が 36x36）
+W <- ab_pkg_small$A1
+
+beta_manual <- solve(t(X) %*% Z %*% W %*% t(Z) %*% X) %*%
+               (t(X) %*% Z %*% W %*% t(Z) %*% y) %>% drop()
+```
+
+```{r REG ab comparison}
+c(pkg = as.numeric(ab_pkg_small$coefficients),
+  manual = beta_manual,
+  diff = as.numeric(ab_pkg_small$coefficients) - beta_manual) %>% round(2)
+```
+
+```{r, eval=F}
+# Build pgmm formula with iv_lags embedded as c(2,3,4)
+make_pgmm_formula <- function(iv_lags) {
+  if (!is.numeric(iv_lags) || length(iv_lags) < 1) {
+    stop("iv_lags must be a numeric vector, e.g., 2:4")
+  }
+  iv_lags <- as.integer(iv_lags)
+  lag_literal <- paste(iv_lags, collapse = ",")
+  fml_txt <- paste0("y ~ lag(y, 1) + x | lag(y, c(", lag_literal, "))")
+  as.formula(fml_txt)
+}
+
+estimate_models <- function(df, iv_lags = 2:4) {
+  pdata <- pdata.frame(df, index = c("id", "t"))
+  
+  pooled <- plm(y ~ lag(y, 1) + x, data = pdata, model = "pooling")
+  fe     <- plm(y ~ lag(y, 1) + x, data = pdata, model = "within")
+  
+  fml_gmm <- make_pgmm_formula(iv_lags)
+  
+  ab1 <- pgmm(
+    formula = fml_gmm,
+    data = pdata,
+    effect = "individual",
+    model = "onestep",
+    transformation = "d"
+  )
+  
+  ab2 <- pgmm(
+    formula = fml_gmm,
+    data = pdata,
+    effect = "individual",
+    model = "twosteps",
+    transformation = "d"
+  )
+  
+  getc <- function(obj, nm) {
+    cc <- coef(obj)
+    if (!nm %in% names(cc)) return(NA_real_)
+    unname(cc[[nm]])
+  }
+  
+  coefs <- c(
+    delta_pooled  = getc(pooled, "lag(y, 1)"),
+    beta_pooled = getc(pooled, "x"),
+    delta_fe      = getc(fe, "lag(y, 1)"),
+    beta_fe     = getc(fe, "x"),
+    delta_ab1     = getc(ab1, "lag(y, 1)"),
+    beta_ab1    = getc(ab1, "x"),
+    delta_ab2     = getc(ab2, "lag(y, 1)"),
+    beta_ab2    = getc(ab2, "x")
+  )
+  
+  diag <- c(
+    ar2_p_ab1     = tryCatch(mtest(ab1, order = 2)$p.value, error = function(e) NA_real_),
+    ar2_p_ab2     = tryCatch(mtest(ab2, order = 2)$p.value, error = function(e) NA_real_),
+    hansen_p_ab1  = tryCatch(sargan(ab1)$p.value, error = function(e) NA_real_),
+    hansen_p_ab2  = tryCatch(sargan(ab2)$p.value, error = function(e) NA_real_)
+  )
+  
+  list(coefs = coefs, diag = diag)
+}
+
+mc_run <- function(R = 200,
+                   N = 5000, T = 8,
+                   delta = 0.7, beta = 1.0,
+                   iv_lags = 2:4,
+                   x_type = c("exogenous", "endogenous"),
+                   endog_strength = 0.5,
+                   verbose_every = 50) {
+  
+  x_type <- match.arg(x_type)
+  
+  coef_mat <- matrix(NA_real_, nrow = R, ncol = 8)
+  colnames(coef_mat) <- c("delta_pooled","beta_pooled","delta_fe","beta_fe",
+                          "delta_ab1","beta_ab1","delta_ab2","beta_ab2")
+  
+  diag_mat <- matrix(NA_real_, nrow = R, ncol = 4)
+  colnames(diag_mat) <- c("ar2_p_ab1","ar2_p_ab2","hansen_p_ab1","hansen_p_ab2")
+  
+  for (r in seq_len(R)) {
+    df  <- simulate_dynamic_panel(N=N, T=T, delta=delta, beta=beta,
+                                  x_type=x_type, endog_strength=endog_strength)
+    est <- estimate_models(df, iv_lags=iv_lags)
+    
+    coef_mat[r, ] <- est$coefs
+    diag_mat[r, ] <- est$diag
+    
+    if (!is.null(verbose_every) && verbose_every > 0 && (r %% verbose_every == 0)) {
+      message("rep = ", r)
+    }
+  }
+  
+  coef_df <- as.data.frame(coef_mat)
+  diag_df <- as.data.frame(diag_mat)
+  
+  summarize_est <- function(x, true) {
+    ok <- is.finite(x)
+    x  <- x[ok]
+    c(
+      mean = mean(x),
+      bias = mean(x) - true,
+      rmse = sqrt(mean((x - true)^2)),
+      n_ok = length(x)
+    )
+  }
+  
+  summary_tbl <- rbind(
+    pooled_delta  = summarize_est(coef_df$delta_pooled,  delta),
+    fe_delta      = summarize_est(coef_df$delta_fe,      delta),
+    ab1_delta     = summarize_est(coef_df$delta_ab1,     delta),
+    ab2_delta     = summarize_est(coef_df$delta_ab2,     delta),
+    pooled_beta = summarize_est(coef_df$beta_pooled, beta),
+    fe_beta     = summarize_est(coef_df$beta_fe,     beta),
+    ab1_beta    = summarize_est(coef_df$beta_ab1,    beta),
+    ab2_beta    = summarize_est(coef_df$beta_ab2,    beta)
+  )
+  
+  diag_summary <- c(
+    ar2_pass_rate_ab1 = mean(diag_df$ar2_p_ab1 > 0.05, na.rm = TRUE),
+    ar2_pass_rate_ab2 = mean(diag_df$ar2_p_ab2 > 0.05, na.rm = TRUE),
+    hansen_mid_rate_ab1 = mean(diag_df$hansen_p_ab1 > 0.05 & diag_df$hansen_p_ab1 < 0.95, na.rm = TRUE),
+    hansen_mid_rate_ab2 = mean(diag_df$hansen_p_ab2 > 0.05 & diag_df$hansen_p_ab2 < 0.95, na.rm = TRUE)
+  )
+  
+  list(summary = summary_tbl, diag_summary = diag_summary,
+       coefs = coef_df, diags = diag_df)
+}
+
+# ---- Run (exogenous x) ----
+ans_exog <- mc_run(R=200, N=5000, T=8, delta=0.7, beta=1.0, iv_lags=2:4, x_type="exogenous")
+print(round(ans_exog$summary, 4))
+print(round(ans_exog$diag_summary, 4))
+
+
+```
+
+memo
+
+Greene Chap. 11.8.
+
+IV: level or diff? -> level (Arellano and Bond)
